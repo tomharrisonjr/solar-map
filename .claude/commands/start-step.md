@@ -45,6 +45,17 @@ Follow this procedure exactly:
    `name: "<type>/gh-<child-issue-number>-<desc>"` (e.g. `feature/gh-42-nearest-facility-api`).
    Do not use raw `git worktree` commands — `EnterWorktree` is the supported mechanism in
    this environment and handles branch creation, base ref, and later cleanup.
+   - **Known quirk**: the tool sanitizes the `name` you pass — `/` becomes `+` and it
+     prefixes `worktree-` — so the branch it actually creates is *not*
+     `<type>/gh-<issue>-<desc>`. Immediately after `EnterWorktree` returns, rename it:
+     `git branch -m <type>/gh-<child-issue-number>-<desc>`.
+   - **Known quirk**: by default the worktree branches from `origin/<default-branch>`,
+     not local `main` — so if the current session has local commits on `main` that
+     haven't been pushed (e.g. plan-doc edits from this same conversation), the new
+     worktree won't have them. Immediately check for this
+     (`git log --oneline -1 main` vs. the worktree's `git log --oneline -1`) and, if the
+     worktree is behind, run `git merge --ff-only main` inside the worktree to pick up
+     the missing commits before doing anything else.
 
 7. **Update the plan doc inside the new worktree**: set the step's row status to
    `🔄 In Progress` and note the issue number next to the step title (e.g.
