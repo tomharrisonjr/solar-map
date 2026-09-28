@@ -19,5 +19,8 @@ backend/media/
 .idea/
 .DS_Store
 
+# Claude Code worktrees (ephemeral, created by /start-step)
+.claude/worktrees/
+
 # ruff
 .ruff_cache/

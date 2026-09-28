@@ -1,6 +1,6 @@
 # Data ingestion, nearest-facility API, and a minimal map UI
 
-- GitHub Issue: TBD (#___)
+- GitHub Issue: #2
 - Date: 2026-09-28
 - Status: Draft
 

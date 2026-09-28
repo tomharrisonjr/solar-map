@@ -51,15 +51,15 @@ bugbear, and Django-aware `DJ` rules; migrations excluded).
 
 ## Workflow
 
-This repo has no GitHub remote configured yet, so there's no issue-tracking workflow to
-follow — add one here once a remote exists.
+The repo is at `github.com/tomharrisonjr/solar-map`; `gh` is authenticated for issue/PR
+work.
 
 - **Every non-trivial feature starts with a plan doc** before implementation: a markdown
   file under `docs/plans/` (e.g. `docs/plans/nearest-facility-api.md`) whose header is:
   ```markdown
   # <Title>
 
-  - GitHub Issue: TBD (#___)
+  - GitHub Issue: #<n>
   - Date: YYYY-MM-DD
   - Status: Draft | In Progress | Complete
 
@@ -71,15 +71,26 @@ follow — add one here once a remote exists.
   | ⬜ Pending | 2 | <short step name> |
   ```
   Status column values: ✅ Done, 🔄 In Progress, ⬜ Pending, ⏸️ Deferred — no separate
-  legend needed, the symbols are self-explanatory. The `GitHub Issue` line stays `TBD
-  (#___)` until an issue exists for the work, then gets filled in. The steps table is
-  followed by a `## Context` section (why this change, what prompted it) and then one
+  legend needed, the symbols are self-explanatory. The steps table is followed by a
+  `## Context` section (why this change, what prompted it) and then one
   `## Step N — <name>` section per row with the concrete file-level detail, mirroring the
   table's step names and order.
 
-  Use Claude Code's plan mode to draft this, get it approved, then write it to the file
-  before starting implementation. Update each step's status in the table (and the
-  overall `Status` field) as work progresses.
+  Use Claude Code's plan mode to draft this and get it approved. Once approved, **create
+  a parent GitHub issue for the plan** (`gh issue create --title "<Title>" --body
+  "<summary>"`) and put its number directly in the `GitHub Issue:` header — the plan doc
+  is never written to disk with a placeholder. Update the table and overall `Status` as
+  work progresses.
+- **Starting a step doesn't happen until implementation begins** — steps don't get their
+  own issue or branch just for being planned. When you're ready to work on one (e.g. "start
+  step 3 of `docs/plans/foo.md`"), use `/start-step <plan-doc> <step-number>`, which:
+  1. Creates a child GitHub issue for that step, linked to the plan's parent issue.
+  2. Creates an isolated git worktree (via the `EnterWorktree` tool, not raw `git
+     worktree`) on a new branch named `<type>/gh-<issue>-<desc>` — `type` is
+     `chore`/`bug`/`feature`, `issue` is the new child issue number, `desc` is a
+     slugified step title. Working in a worktree means this can be kicked off regardless
+     of what branch or process is currently active in the main checkout.
+  See `.claude/commands/start-step.md` for the exact procedure.
 - **Before considering a change done**, both of the following should pass:
   1. `docker compose run --rm web ruff check .`
   2. `docker compose run --rm web python manage.py test`
