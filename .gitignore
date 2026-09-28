@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Django
+*.log
+backend/.env
+backend/staticfiles/
+backend/media/
+
+# Docker
+.env
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+
+# ruff
+.ruff_cache/
