@@ -11,7 +11,7 @@ There is no frontend yet — a Next.js map UI is a later phase, not part of this
 
 ```
 backend/
-  Dockerfile           python:3.12-slim + gdal-bin/libgdal-dev/libgeos-dev/libproj-dev
+  Dockerfile           python:3.14-slim + gdal-bin/libgdal-dev/libgeos-dev/libproj-dev
   requirements.txt     Django, djangorestframework, djangorestframework-gis, psycopg
   requirements-dev.txt requirements.txt + ruff
   pyproject.toml       ruff config (E, F, I, UP, B, DJ; migrations excluded)
