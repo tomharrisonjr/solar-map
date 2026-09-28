@@ -75,6 +75,8 @@ follow — add one here once a remote exists.
   feature's plan doc) is updated to reflect what shipped, and the plan doc's `Status` is
   set to `Complete`.
 
+
+- Any new environment variables should be committed to .env.sample with documentation
 ## Conventions
 
 - **GeoDjango data model**: `SolarFacility.geom` (the USPVDB panel-array polygon) is the
