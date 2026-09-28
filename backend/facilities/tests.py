@@ -1,4 +1,10 @@
+import json
+import tempfile
+from io import StringIO
+from pathlib import Path
+
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.core.management import call_command
 from django.test import TestCase
 
 from facilities.models import SolarFacility
@@ -8,6 +14,7 @@ class SolarFacilityModelTests(TestCase):
     def test_str_returns_name(self) -> None:
         polygon = Polygon(((-1, -1), (-1, 1), (1, 1), (1, -1), (-1, -1)))
         facility = SolarFacility.objects.create(
+            case_id=1,
             name="Test Solar Farm",
             state="CA",
             capacity_mw=10.0,
@@ -24,7 +31,7 @@ class NearestFacilityApiTests(TestCase):
     @classmethod
     def setUpTestData(cls) -> None:
         # Centroids along the equator at lon 0, 1, 2 so distance order is unambiguous.
-        for name, lon in [("Far", 2.0), ("Near", 0.0), ("Mid", 1.0)]:
+        for case_id, (name, lon) in enumerate([("Far", 2.0), ("Near", 0.0), ("Mid", 1.0)], start=1):
             polygon = Polygon(
                 (
                     (lon - 0.1, -0.1),
@@ -35,6 +42,7 @@ class NearestFacilityApiTests(TestCase):
                 )
             )
             SolarFacility.objects.create(
+                case_id=case_id,
                 name=name,
                 state="CA",
                 capacity_mw=1.0,
@@ -78,3 +86,55 @@ class NearestFacilityApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["type"], "FeatureCollection")
         self.assertEqual(len(body["features"]), 3)
+
+
+class LoadUspvdbCommandTests(TestCase):
+    def _feature(
+        self,
+        case_id: int,
+        name: str = "Test Solar Farm",
+        eia_id: int | None = None,
+    ) -> dict:
+        return {
+            "type": "Feature",
+            "properties": {
+                "case_id": case_id,
+                "eia_id": eia_id,
+                "p_name": name,
+                "p_state": "CA",
+                "p_cap_ac": 10.5,
+                "p_year": 2020,
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-1, -1], [-1, 1], [1, 1], [1, -1], [-1, -1]]],
+            },
+        }
+
+    def test_creates_and_updates_facilities_from_geojson_file(self) -> None:
+        geojson = {"type": "FeatureCollection", "features": [self._feature(case_id=42)]}
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "uspvdb.geojson"
+            path.write_text(json.dumps(geojson))
+
+            call_command("load_uspvdb", str(path), stdout=StringIO())
+
+            facility = SolarFacility.objects.get(case_id=42)
+            self.assertEqual(facility.name, "Test Solar Farm")
+            self.assertEqual(facility.state, "CA")
+            self.assertEqual(facility.capacity_mw, 10.5)
+            self.assertEqual(facility.install_year, 2020)
+            self.assertIsNone(facility.eia_id)
+            self.assertIsNotNone(facility.centroid)
+            self.assertEqual(SolarFacility.objects.count(), 1)
+
+            geojson["features"][0]["properties"]["p_name"] = "Renamed Solar Farm"
+            geojson["features"][0]["properties"]["eia_id"] = 12345
+            path.write_text(json.dumps(geojson))
+
+            call_command("load_uspvdb", str(path), stdout=StringIO())
+
+            self.assertEqual(SolarFacility.objects.count(), 1)
+            facility.refresh_from_db()
+            self.assertEqual(facility.name, "Renamed Solar Farm")
+            self.assertEqual(facility.eia_id, "12345")

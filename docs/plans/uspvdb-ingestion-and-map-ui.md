@@ -8,7 +8,7 @@
 
 | Status | # | Step |
 |--------|---|------|
-| ⬜ Pending | 1 | Ingestion: add `case_id` field + implement `load_uspvdb` |
+| ✅ Done | 1 | Ingestion: add `case_id` field + implement `load_uspvdb` |
 | ✅ Done | 2 | Nearest-facility API endpoint |
 | ⬜ Pending | 3 | Minimal map UI (server-rendered, no Next.js yet) |
 | ⬜ Pending | 4 | Wrap-up (lint, tests, docs) |
@@ -36,7 +36,7 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
   the idempotency key for upserts. Adding `case_id` as the true unique key is a small,
   necessary model change.
 
-## Step 1 — Ingestion: add `case_id`, implement `load_uspvdb`
+## Step 1 — Ingestion: add `case_id`, implement `load_uspvdb` (#3)
 
 - `backend/facilities/models.py`: add
   `case_id: models.IntegerField[int] = models.IntegerField(unique=True)` to
