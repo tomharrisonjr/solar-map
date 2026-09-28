@@ -59,12 +59,27 @@ follow — add one here once a remote exists.
   ```markdown
   # <Title>
 
+  - GitHub Issue: TBD (#___)
   - Date: YYYY-MM-DD
   - Status: Draft | In Progress | Complete
+
+  ## Steps
+
+  | Status | # | Step |
+  |--------|---|------|
+  | ⬜ Pending | 1 | <short step name> |
+  | ⬜ Pending | 2 | <short step name> |
   ```
-  followed by the plan content. Use Claude Code's plan mode to draft this, get it
-  approved, then write it to the file before starting implementation. Update `Status` as
-  work progresses.
+  Status column values: ✅ Done, 🔄 In Progress, ⬜ Pending, ⏸️ Deferred — no separate
+  legend needed, the symbols are self-explanatory. The `GitHub Issue` line stays `TBD
+  (#___)` until an issue exists for the work, then gets filled in. The steps table is
+  followed by a `## Context` section (why this change, what prompted it) and then one
+  `## Step N — <name>` section per row with the concrete file-level detail, mirroring the
+  table's step names and order.
+
+  Use Claude Code's plan mode to draft this, get it approved, then write it to the file
+  before starting implementation. Update each step's status in the table (and the
+  overall `Status` field) as work progresses.
 - **Before considering a change done**, both of the following should pass:
   1. `docker compose run --rm web ruff check .`
   2. `docker compose run --rm web python manage.py test`
