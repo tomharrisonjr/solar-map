@@ -9,7 +9,7 @@
 | Status | # | Step |
 |--------|---|------|
 | ⬜ Pending | 1 | Ingestion: add `case_id` field + implement `load_uspvdb` |
-| ⬜ Pending | 2 | Nearest-facility API endpoint |
+| ✅ Done | 2 | Nearest-facility API endpoint |
 | ⬜ Pending | 3 | Minimal map UI (server-rendered, no Next.js yet) |
 | ⬜ Pending | 4 | Wrap-up (lint, tests, docs) |
 
@@ -60,7 +60,7 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
   command against a downloaded extract and confirm row count via
   `docker compose run --rm web python manage.py shell -c "from facilities.models import SolarFacility; print(SolarFacility.objects.count())"`.
 
-## Step 2 — Nearest-facility API endpoint
+## Step 2 — Nearest-facility API endpoint (#5)
 
 - `backend/facilities/views.py`: add a `@action(detail=False)` method `nearest` on
   `SolarFacilityViewSet` — `GET /api/facilities/nearest/?lat=..&lon=..&n=5` — using the
