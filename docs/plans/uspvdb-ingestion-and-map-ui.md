@@ -2,7 +2,7 @@
 
 - GitHub Issue: #2
 - Date: 2026-09-28
-- Status: In Progress
+- Status: Complete
 
 ## Steps
 
@@ -11,7 +11,7 @@
 | ✅ Done | 1 | Ingestion: add `case_id` field + implement `load_uspvdb` |
 | ✅ Done | 2 | Nearest-facility API endpoint |
 | ✅ Done | 3 | Minimal map UI (server-rendered, no Next.js yet) |
-| ⬜ Pending | 4 | Wrap-up (lint, tests, docs) |
+| ✅ Done | 4 | Wrap-up (lint, tests, docs) |
 
 ## Context
 
@@ -112,14 +112,14 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
   raised `AttributeError: 'super' object has no attribute 'dicts'`, and the same `Context`
   copy is used by `{% include %}` (so e.g. the admin). 5.2.8 is the first 5.2 release
   supporting 3.14. DRF 3.15 / DRF-GIS 1.1 work unchanged; image rebuilt.
-- Verified: `task check` (8 tests, incl. page + static-file tests) and migration drift check
-  pass. The real server was loaded with 6 synthetic facilities via `load_uspvdb` and
-  `/`, `/static/facilities/map.js`, `/api/facilities/` and `/nearest/` were fetched over
-  HTTP; `map.js` was also run under Node with stubbed MapLibre/DOM against the live API
-  (load + click → correct sidebar, markers, bounds). **Not verified:** actual in-browser
-  rendering (tiles, layer paint, real click) — needs a look at the page.
+- Verified: `task check` (9 tests, incl. page, static-file and Referrer-Policy tests) and
+  migration drift check pass. The real server was loaded with 6 synthetic facilities via
+  `load_uspvdb` and `/`, `/static/facilities/map.js`, `/api/facilities/` and `/nearest/`
+  were fetched over HTTP; `map.js` was also run under Node with stubbed MapLibre/DOM
+  against the live API (load + click → correct sidebar, markers, bounds). The page was then
+  checked in a browser by the author: tiles load once the Referrer-Policy fix was in.
 
-## Step 4 — Wrap-up per repo workflow
+## Step 4 — Wrap-up per repo workflow (#12)
 
 - `docker compose run --rm web ruff check .` and
   `docker compose run --rm web python manage.py test` must both pass.
@@ -130,6 +130,32 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
   reference once one exists.
 - New env vars: none anticipated (CDN-loaded JS needs no API keys); if a basemap tile
   source requiring a key gets added later, document it in `backend/.env.example` then.
+
+**As shipped:**
+
+- `task check` passes on `main` from a fresh worktree (ruff clean, 9 tests OK); a fresh
+  database migrates cleanly through `0001_initial` and `0002_solarfacility_case_id`, and
+  `makemigrations --check` reports no drift.
+- `docs/requirements.md`: the four core features are marked done with what shipped; the
+  data-model sketch now includes `case_id` and why; the stack, repo layout and risks
+  sections match reality (Django 5.2 / Python 3.14, Taskfile and `AGENTS.md`, the OSM tile
+  usage policy).
+- New env vars: none. (`DB_PORT`/`WEB_PORT` for docker-compose were documented earlier in
+  the root `.env.example` as part of the worktree workflow; the OSM Referrer-Policy fix is a
+  Django setting, not an env var.)
+- Status set to `Complete`.
+
+**Open follow-ups (not blocking, deliberately not done here):**
+
+- Run `load_uspvdb` against the real USPVDB download — so far it has only seen synthetic
+  data. `name`/`state`/`capacity_mw` are non-null columns, so a feature missing one would
+  abort the whole load; revisit once real data is loaded. Migration `0002` adds `case_id`
+  with `default=0, unique=True`, which is fine on an empty table only.
+- Use a tile provider (or self-host) before deploying or heavy use; the public OSM server
+  is best-effort with no SLA.
+- Local database volumes created by the old `postgis/postgis` image must be recreated
+  (`docker compose down -v`) because of the glibc collation change.
+- Deferred items below (Next.js, spatial joins, raw-SQL KNN).
 
 ## Deferred to a later pass (not in this slice)
 

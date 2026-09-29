@@ -53,14 +53,21 @@ skillset and could be a v2 direction once the core app works.
 
 ## Core Features (v1)
 
-1. **Data ingestion**: management command to load USPVDB GeoJSON into the database,
+All four are implemented (see `docs/plans/uspvdb-ingestion-and-map-ui.md`).
+
+1. ✅ **Data ingestion**: management command to load USPVDB GeoJSON into the database,
    including computing/storing a denormalized centroid point per facility.
-2. **Nearest-facility query**: given a lat/lon, return the N closest solar facilities
+   *`load_uspvdb <path-or-url>` upserts by `case_id`; it takes an extracted GeoJSON file
+   (no zip handling). Not yet run against the full real dataset — only synthetic data.*
+2. ✅ **Nearest-facility query**: given a lat/lon, return the N closest solar facilities
    (via GeoDjango ORM `Distance` annotation initially; consider raw SQL with the PostGIS
    `<->` KNN operator later for performance comparison).
-3. **API layer**: expose facilities as GeoJSON via Django REST Framework +
+   *`GET /api/facilities/nearest/?lat=&lon=&n=` (default 5, max 25) via the ORM annotation;
+   the raw-SQL KNN comparison is still open.*
+3. ✅ **API layer**: expose facilities as GeoJSON via Django REST Framework +
    `djangorestframework-gis`, suitable for consumption by a map-based frontend.
-4. **Basic map UI**: display facilities on a map and let a user click/search a location to
+   *`/api/facilities/` returns one unpaginated FeatureCollection.*
+4. ✅ **Basic map UI**: display facilities on a map and let a user click/search a location to
    find the nearest facility (or facilities). *Shipped as a minimal server-rendered page at
    `/` (MapLibre GL JS from a CDN); click-to-find-nearest only, no search box yet.*
 
@@ -78,8 +85,10 @@ skillset and could be a v2 direction once the core app works.
 ```
 solar-map/
 ├── docker-compose.yml          # imresamu/postgis (multi-arch) image for local dev
-├── Dockerfile
+├── Taskfile.yml                # task check / lint / test / migrate, wt:new / wt:rm (worktrees)
+├── AGENTS.md                   # agent + contributor guidance (CLAUDE.md symlinks to it)
 ├── backend/
+│   ├── Dockerfile
 │   ├── manage.py
 │   ├── config/                 # Django project settings
 │   │   ├── settings.py
@@ -99,8 +108,10 @@ solar-map/
 
 ### Stack
 
-- **Backend**: Python, Django, GeoDjango, PostGIS (via `imresamu/postgis` Docker image (multi-arch; the official `postgis/postgis` is amd64-only)
-  locally; AWS RDS for Postgres with the PostGIS extension enabled in production).
+- **Backend**: Python 3.14, Django 5.2 LTS (5.2.8+ is the first with 3.14 support),
+  GeoDjango, PostGIS (via the multi-arch `imresamu/postgis` Docker image locally — the
+  official `postgis/postgis` is amd64-only; AWS RDS for Postgres with the PostGIS extension
+  enabled in production).
 - **API**: Django REST Framework + `djangorestframework-gis` for GeoJSON serialization.
 - **Frontend**: optional Next.js app using MapLibre/Mapbox GL, consuming the GeoJSON API.
   Started with a minimal server-rendered template (`facilities/map.html`, MapLibre GL JS
@@ -115,6 +126,7 @@ solar-map/
 from django.contrib.gis.db import models
 
 class SolarFacility(models.Model):
+    case_id = models.IntegerField(unique=True)   # stable USPVDB id; the upsert key
     eia_id = models.CharField(max_length=20, unique=True, null=True)
     name = models.CharField(max_length=255)
     state = models.CharField(max_length=2)
@@ -130,6 +142,10 @@ class SolarFacility(models.Model):
 The centroid is denormalized on ingestion so nearest-facility queries can run against
 points rather than polygons, which is cheaper and simpler, while `geom` remains available
 for area/containment work.
+
+`case_id` was added during ingestion work: it is always present and unique in USPVDB,
+whereas `eia_id` is nullable (not every facility links to an EIA plant), so `eia_id` can't
+serve as the idempotency key for re-loading the dataset.
 
 ### Example nearest-facility query (GeoDjango ORM)
 
@@ -147,9 +163,16 @@ SolarFacility.objects.annotate(distance=Distance("centroid", pt)).order_by("dist
   If `manage.py migrate` or `LayerMapping` import fails with missing library errors,
   check `GDAL_LIBRARY_PATH` / `GEOS_LIBRARY_PATH` in Django settings first, and verify the
   Docker base image includes the GDAL/GEOS system packages.
-- **Local vs. RDS parity**: use the `imresamu/postgis` Docker image (multi-arch; the official `postgis/postgis` is amd64-only) locally (not plain
-  `postgres`) so the extension is available from the start; remember to run
-  `CREATE EXTENSION postgis;` on the RDS instance before first migration.
+- **Local vs. RDS parity**: use the multi-arch `imresamu/postgis` Docker image locally (not
+  plain `postgres`; the official `postgis/postgis` is amd64-only) so the extension is
+  available from the start; remember to run `CREATE EXTENSION postgis;` on the RDS
+  instance before first migration.
+- **OpenStreetMap tile usage policy**: the map's basemap uses the public
+  `tile.openstreetmap.org` server, which requires a valid browser `Referer` (so
+  `SECURE_REFERRER_POLICY` must stay non-restrictive), visible attribution, and no bulk
+  fetching — and blocks violators with a `403`
+  (<https://operations.osmfoundation.org/policies/tiles/>). It is best-effort with no SLA;
+  switch to a tile provider before any real deployment or heavy use.
 - Dataset licensing/attribution: confirm USPVDB and any paired datasets (GFW, WDPA) usage
   terms if the project is ever made public.
 

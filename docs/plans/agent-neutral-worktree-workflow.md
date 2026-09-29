@@ -76,9 +76,11 @@ notes. The `.claude/worktrees/` `.gitignore` entry can stay for legacy worktrees
 ## Verification
 
 Run: 1–3 (via a throwaway `chore/gh-0-smoke` worktree; `task check` passed with the primary
-stack still running on 5432/8000). **Not yet verified:** 4 (`/start-step` end to end) and 5
-(Cursor picking up `AGENTS.md`) — do these next time a step is started / when opening the repo
-in Cursor.
+stack still running on 5432/8000). 4 (`/start-step` end to end) has since been run for real,
+twice (Steps 3 and 4 of the ingestion/map plan): `task wt:new` gave exact branch names based
+on `main`, and `EnterWorktree` with `path` switched the session into the sibling folder.
+**Not yet verified:** 5 (Cursor picking up `AGENTS.md`) — check when opening the repo in
+Cursor.
 
 1. `task wt:new -- chore/gh-0-smoke` from the main checkout: worktree appears at
    `../solar-map.worktrees/chore-gh-0-smoke`, branch name exact, based on local `main`,
