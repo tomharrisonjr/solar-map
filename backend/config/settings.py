@@ -30,6 +30,10 @@ INSTALLED_APPS: list[str] = [
 ]
 
 MIDDLEWARE: list[str] = [
+    # Compresses tiles and API JSON for clients that send Accept-Encoding: gzip. Listed first
+    # so it wraps every other middleware's output. (Django masks CSRF tokens per response,
+    # which is its mitigation for gzip + BREACH on the few HTML forms, e.g. the admin.)
+    "django.middleware.gzip.GZipMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

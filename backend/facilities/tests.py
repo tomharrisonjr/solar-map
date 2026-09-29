@@ -1,5 +1,6 @@
 import io
 import json
+import math
 import tempfile
 import urllib.error
 import zipfile
@@ -19,6 +20,7 @@ from facilities.management.commands.load_uspvdb import (
     USER_AGENT,
 )
 from facilities.models import SolarFacility
+from facilities.tiles import MAX_ZOOM, MVT_CONTENT_TYPE, POLYGON_MIN_ZOOM, is_valid_tile
 
 
 class SolarFacilityModelTests(TestCase):
@@ -263,3 +265,104 @@ class MapViewTests(TestCase):
 
     def test_map_script_is_served_by_staticfiles(self) -> None:
         self.assertIsNotNone(finders.find("facilities/map.js"))
+
+
+def _tile_for(lon: float, lat: float, z: int) -> tuple[int, int]:
+    """x, y of the web-mercator (XYZ) tile containing lon/lat at zoom z."""
+    n = 2**z
+    x = int((lon + 180.0) / 360.0 * n)
+    y = int((1.0 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2.0 * n)
+    return x, y
+
+
+class TileEndpointTests(TestCase):
+    """/tiles/{z}/{x}/{y}.mvt. A tile is a protobuf whose layer names and string values are plain
+    bytes, so we assert on those instead of decoding it (no MVT-decoding dependency)."""
+
+    LON, LAT = 10.0, 45.0
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        d = 0.01
+        polygon = Polygon(
+            (
+                (cls.LON - d, cls.LAT - d),
+                (cls.LON - d, cls.LAT + d),
+                (cls.LON + d, cls.LAT + d),
+                (cls.LON + d, cls.LAT - d),
+                (cls.LON - d, cls.LAT - d),
+            )
+        )
+        SolarFacility.objects.create(
+            case_id=1,
+            name="Tile Test Farm",
+            state="CA",
+            capacity_mw=12.5,
+            install_year=2020,
+            geom=MultiPolygon(polygon),
+            centroid=Point(cls.LON, cls.LAT),
+        )
+
+    def _get_tile(self, z: int, x: int, y: int, **extra):
+        return self.client.get(f"/tiles/{z}/{x}/{y}.mvt", **extra)
+
+    def _get_facility_tile(self, z: int, **extra):
+        x, y = _tile_for(self.LON, self.LAT, z)
+        return self._get_tile(z, x, y, **extra)
+
+    def test_world_tile_has_points_but_no_polygons(self) -> None:
+        response = self._get_tile(0, 0, 0)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], MVT_CONTENT_TYPE)
+        self.assertIn(b"points", response.content)
+        self.assertNotIn(b"polygons", response.content)
+        self.assertIn(b"Tile Test Farm", response.content)
+
+    def test_polygon_layer_starts_at_polygon_min_zoom(self) -> None:
+        below = self._get_facility_tile(POLYGON_MIN_ZOOM - 1)
+        at = self._get_facility_tile(POLYGON_MIN_ZOOM)
+        high = self._get_facility_tile(14)
+
+        self.assertNotIn(b"polygons", below.content)
+        for response in (at, high):
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"points", response.content)
+            self.assertIn(b"polygons", response.content)
+
+    def test_valid_tile_without_facilities_returns_204(self) -> None:
+        x, y = _tile_for(0.0, 0.0, 12)  # open ocean, nowhere near the test facility
+
+        response = self._get_tile(12, x, y)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+
+    def test_invalid_tile_coordinates_return_404(self) -> None:
+        for z, x, y in [(MAX_ZOOM + 1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 2, 0), (1, 0, 2)]:
+            with self.subTest(z=z, x=x, y=y):
+                self.assertEqual(self._get_tile(z, x, y).status_code, 404)
+
+    def test_only_get_is_allowed(self) -> None:
+        self.assertEqual(self.client.post("/tiles/0/0/0.mvt").status_code, 405)
+
+    def test_tiles_are_publicly_cacheable(self) -> None:
+        for response in (self._get_tile(0, 0, 0), self._get_tile(12, *_tile_for(0.0, 0.0, 12))):
+            with self.subTest(status=response.status_code):
+                self.assertIn("public", response["Cache-Control"])
+                self.assertIn("max-age=3600", response["Cache-Control"])
+
+    def test_gzip_is_applied_when_the_client_accepts_it(self) -> None:
+        # GZipMiddleware only compresses bodies over ~200 bytes; the API list is well over that.
+        response = self.client.get("/api/facilities/", headers={"accept-encoding": "gzip"})
+
+        self.assertEqual(response["Content-Encoding"], "gzip")
+        self.assertIn("Accept-Encoding", response["Vary"])
+
+    def test_is_valid_tile(self) -> None:
+        self.assertTrue(is_valid_tile(0, 0, 0))
+        self.assertTrue(is_valid_tile(MAX_ZOOM, 2**MAX_ZOOM - 1, 0))
+        self.assertFalse(is_valid_tile(-1, 0, 0))
+        self.assertFalse(is_valid_tile(MAX_ZOOM + 1, 0, 0))
+        self.assertFalse(is_valid_tile(3, 8, 0))
+        self.assertFalse(is_valid_tile(3, 0, -1))

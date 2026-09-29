@@ -2,13 +2,13 @@
 
 - GitHub Issue: #15
 - Date: 2026-09-29
-- Status: Draft
+- Status: In Progress
 
 ## Steps
 
 | Status | # | Step |
 |--------|---|------|
-| ⬜ Pending | 1 | MVT tile endpoint (`/tiles/{z}/{x}/{y}.mvt`) |
+| ✅ Done | 1 | MVT tile endpoint (`/tiles/{z}/{x}/{y}.mvt`) |
 | ⬜ Pending | 2 | Map uses the vector source; restore list pagination |
 | ⬜ Pending | 3 | Measure, tune, wrap-up |
 
@@ -24,7 +24,7 @@ MapLibre fetches only what is in view. No new dependencies; strong PostGIS learn
 Do `docs/plans/data-bootstrap.md` first: this plan's verification needs the real dataset that
 plan makes easy to load.
 
-## Step 1 — MVT tile endpoint
+## Step 1 — MVT tile endpoint (#25)
 
 - New view + URL: `GET /tiles/<int:z>/<int:x>/<int:y>.mvt` (wire in `config/urls.py`; view in
   `facilities/views.py` or a new `facilities/tiles.py`). Validate `0 ≤ z ≤ 22`,
@@ -43,6 +43,36 @@ plan makes easy to load.
   helper-level feature counts via SQL, no MVT-decoding dependency).
 - Confirm a GiST index exists on `geom` (GeoDjango `spatial_index=True` default → check
   migration 0001) and record `EXPLAIN` showing an index scan.
+
+**As shipped:**
+
+- `facilities/tiles.py` (static parameterized SQL, `is_valid_tile`, `build_tile`) and a
+  `tile_view` in `facilities/views.py` (`@require_GET`, `@cache_control(public, max_age=3600)`),
+  wired at `tiles/<z>/<x>/<y>.mvt` in `config/urls.py`. 404 for invalid coordinates, 204 for a
+  valid tile with no facilities, `application/vnd.mapbox-vector-tile` otherwise. Constants:
+  `MAX_ZOOM = 22`, `POLYGON_MIN_ZOOM = 9`, extent 4096, buffer 64.
+- `GZipMiddleware` added first in `MIDDLEWARE`.
+- 8 new tests (24 total): layers per zoom (points-only below `POLYGON_MIN_ZOOM`, both at and
+  above), 204/404/405, cache headers, gzip, `is_valid_tile`. Tile bytes are protobuf with
+  plain-text layer names/strings, so tests assert on those, no decoding dependency.
+- **Index confirmed (real data, 6,611 rows):** GeoDjango creates GiST indexes on both `geom` and
+  `centroid` (`pg_indexes`). `EXPLAIN (ANALYZE)` of the tile query shows an **Index Scan** on the
+  GiST index by default (no forcing), ~0.1 ms, 4 buffers for a z12 tile. The tile envelope is
+  constant-folded into a literal polygon, which is what lets the index be used.
+- **Measured against the real data** (local, ~20–70 ms per tile):
+
+  | Tile | Layers | Bytes | gzip |
+  | --- | --- | --- | --- |
+  | 0/0/0 (whole world) | points only | 438,359 | 202,038 |
+  | 4/3/6 | points only | 48,198 | — |
+  | 8/43/102 (LA area) | points only | 3,541 | — |
+  | 9/87/204 (LA area) | points + polygons | 8,888 | — |
+  | 12/702/1635 | points + polygons | 962 | 752 |
+
+  For comparison the list API is 24.8 MB (8.7 MB gzipped) — a viewport now needs a few KB.
+- **For Step 3:** the world tile is the outlier (438 KB, every facility's properties). Options
+  to try: drop properties from the `points` layer at low zoom (keep just id), or thin points
+  below a zoom threshold. Also tune `POLYGON_MIN_ZOOM` in a browser.
 
 ## Step 2 — Map uses the vector source; restore list pagination
 
