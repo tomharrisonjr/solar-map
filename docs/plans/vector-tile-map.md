@@ -9,7 +9,7 @@
 | Status | # | Step |
 |--------|---|------|
 | ✅ Done | 1 | MVT tile endpoint (`/tiles/{z}/{x}/{y}.mvt`) |
-| ⬜ Pending | 2 | Map uses the vector source; restore list pagination |
+| ✅ Done | 2 | Map uses the vector source; restore list pagination |
 | ⬜ Pending | 3 | Measure, tune, wrap-up |
 
 ## Context
@@ -74,7 +74,7 @@ plan makes easy to load.
   to try: drop properties from the `points` layer at low zoom (keep just id), or thin points
   below a zoom threshold. Also tune `POLYGON_MIN_ZOOM` in a browser.
 
-## Step 2 — Map uses the vector source; restore list pagination
+## Step 2 — Map uses the vector source; restore list pagination (#27)
 
 - `backend/facilities/static/facilities/map.js`: replace the GeoJSON `facilities` source with
   `{type: "vector", tiles: [<origin>/tiles/{z}/{x}/{y}.mvt], maxzoom: 14}` (MapLibre needs
@@ -87,6 +87,42 @@ plan makes easy to load.
   paginated again (a 24.8 MB endpoint shouldn't exist); update its test to expect a paged
   FeatureCollection. Rework the Node simulation harness for a vector source (scratch only).
 - Keep OSM tile-policy constraints intact (Referrer-Policy, attribution).
+- **Added scope (requested when starting this step):** if the browser shares its location, open
+  the map zoomed to a 100 km radius around the user.
+
+**As shipped:**
+
+- `map.js`: the `facilities` source is now `{type: "vector", tiles: [origin + tilesPath],
+  maxzoom: 14}` (URL built by string concatenation — `new URL()` would percent-encode the
+  `{z}/{x}/{y}` braces); a `points` circle layer below `polygonMinZoom` and `polygons`
+  fill/outline layers from it. `loadFacilities()` and the up-front fetch are gone; nearest
+  results and highlighting are unchanged (GeoJSON via `/nearest/`).
+- `map.html` config: `tilesPath`, `tilesMaxZoom`, `polygonMinZoom` (rendered from
+  `MapView.get_context_data`, the same `POLYGON_MIN_ZOOM` constant the tile SQL uses — vector
+  sources default to 512 px tiles, so tile zoom = floor(map zoom) and the two thresholds line
+  up), `nearestUrl`, `nearestCount`, `userRadiusKm: 100`. `facilitiesUrl` removed.
+- **List pagination restored:** `FacilityPagination` (a `GeoJsonPagination` subclass: 100 per
+  page, `?page_size=` up to 1000) keeps the response a valid GeoJSON `FeatureCollection` with
+  `count`/`next`/`previous`; the queryset is ordered by `id` so pages are stable.
+  A default page is 184 KB in ~43 ms (was 24.8 MB).
+- **Browser location → 100 km view:** `navigator.geolocation` (browser-side only; position is
+  sent to the server only if the user clicks). On success, `fitBounds` to the 200 km square
+  around the user (no animation), plus a green "you are here" marker. Falls back to the
+  whole-US view when denied/unavailable, ignores locations outside US coverage (the data is
+  US-only), and doesn't move the view if the user has already clicked the map before the fix
+  arrives. Requires HTTPS or `localhost`.
+- README: the "known limitation" note is gone; API table documents the paged list and the tile
+  endpoint; new troubleshooting row for location.
+- Tests (29 total): paged list, `page_size` and its cap, the page's tile path stays in step with
+  the route, `polygonMinZoom` comes from the server constant, the 100 km setting.
+- **Verified:** `task check`; the real `map.js` run under Node with a stubbed MapLibre and a
+  controllable geolocation against the live server — 26 checks across vector source/layer
+  config, no list fetch, exact 200 km box centred on the user, denied/timeout/outside-US/
+  Alaska/Hawaii, and click-before-fix. **Not verified:** actual in-browser rendering, tile
+  loading and the real permission prompt — needs a look at the page.
+- **First-load transfer, real data (before → after):** default US view (4 tiles at z3)
+  ≈ 0.43 MB, 0.21 MB gzipped, vs 24.8 MB (8.7 MB gzipped) — ~58× smaller; a 100 km view around
+  Los Angeles (z8) ≈ 11 KB vs 24.8 MB.
 
 ## Step 3 — Measure, tune, wrap-up
 

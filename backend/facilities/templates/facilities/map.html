@@ -27,7 +27,7 @@
   <div id="app">
     <aside id="sidebar">
       <h1>Nearest solar facilities</h1>
-      <p id="status">Loading facilities&hellip;</p>
+      <p id="status">Click the map to find the nearest solar facilities.</p>
       <ol id="results"></ol>
     </aside>
     <div id="map"></div>
@@ -36,9 +36,16 @@
   <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
   <script>
     window.SOLAR_MAP_CONFIG = {
-      facilitiesUrl: "/api/facilities/",
+      // Vector tiles (see facilities/tiles.py). {z}/{x}/{y} are MapLibre placeholders, so the path
+      // is written out here; a test keeps it in step with the route in config/urls.py.
+      tilesPath: "/tiles/{z}/{x}/{y}.mvt",
+      tilesMaxZoom: 14,
+      // Zoom at which tiles begin to include polygons (same constant the server uses).
+      polygonMinZoom: {{ polygon_min_zoom }},
       nearestUrl: "/api/facilities/nearest/",
       nearestCount: 5,
+      // On load, if the browser shares its location, zoom to this radius around the user.
+      userRadiusKm: 100,
     };
   </script>
   <script src="{% static 'facilities/map.js' %}"></script>
