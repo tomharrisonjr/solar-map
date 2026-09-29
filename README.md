@@ -10,7 +10,8 @@ you can click anywhere to find the nearest facilities.
 - **Map:** a single server-rendered page using [MapLibre GL JS](https://maplibre.org/) (loaded from a CDN — no frontend build step)
 - **Everything runs in Docker**, so you don't install Python, GDAL, GEOS or PostGIS on your machine
 
-Design and goals: [docs/requirements.md](docs/requirements.md).
+Design and goals: [docs/requirements.md](docs/requirements.md). Free to use, modify and share
+under the [MIT License](LICENSE) (code only — see [Licensing](#acknowledgements-and-licensing)).
 
 ## Prerequisites
 
@@ -157,6 +158,16 @@ Example: `curl "http://localhost:8000/api/facilities/nearest/?lat=34.05&lon=-118
 
 ## Acknowledgements and licensing
 
-- Facility data: USGS / LBNL USPVDB (see the citation above).
-- Basemap: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
-- This repository does not yet include a license file for the code.
+- **Code:** [MIT License](LICENSE) © 2026 Tom Harrison — free to use, copy, modify, and
+  distribute, including commercially, as long as the copyright and license notice are kept.
+  This covers the code and docs in this repository **only**.
+- **Facility data:** the USGS / LBNL USPVDB is not part of this repository and is not covered
+  by the MIT License. It is downloaded from USGS when you run `task setup`; see the
+  [citation above](#the-data) and the [USPVDB data page](https://eerscmap.usgs.gov/uspvdb/data/)
+  for its terms.
+- **Basemap:** © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, made
+  available under the [ODbL](https://opendatacommons.org/licenses/odbl/); tiles are served by
+  OpenStreetMap's public server under its
+  [tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+- **Libraries** (Django, Django REST Framework, MapLibre GL JS, PostGIS, …) keep their own
+  licenses.
