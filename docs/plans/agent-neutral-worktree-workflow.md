@@ -2,16 +2,16 @@
 
 - GitHub Issue: #6
 - Date: 2026-09-29
-- Status: Draft
+- Status: Complete
 
 ## Steps
 
 | Status | # | Step |
 |--------|---|------|
-| ⬜ Pending | 1 | Taskfile with worktree + check tasks |
-| ⬜ Pending | 2 | AGENTS.md as the source of truth; CLAUDE.md points to it |
-| ⬜ Pending | 3 | Slim /start-step to call `task wt:new` |
-| ⬜ Pending | 4 | Wrap-up (docs, .gitignore, verify end-to-end) |
+| ✅ Done | 1 | Taskfile with worktree + check tasks |
+| ✅ Done | 2 | AGENTS.md as the source of truth; CLAUDE.md points to it |
+| ✅ Done | 3 | Slim /start-step to call `task wt:new` |
+| ✅ Done | 4 | Wrap-up (docs, .gitignore, verify end-to-end) |
 
 ## Context
 
@@ -30,7 +30,7 @@ Decisions: worktrees live in a sibling folder `../solar-map.worktrees/<branch-sl
 worktree is created by `task wt:new` (plain `git worktree add -b`), not `EnterWorktree`.
 `task` is already installed (Homebrew).
 
-## Step 1 — Taskfile with worktree + check tasks
+## Step 1 — Taskfile with worktree + check tasks (shipped)
 
 New `Taskfile.yml` at repo root:
 
@@ -69,9 +69,16 @@ notes. The `.claude/worktrees/` `.gitignore` entry can stay for legacy worktrees
 - `task check` passes (ruff + tests).
 - Update `docs/requirements.md`/`AGENTS.md` if they describe the workflow; set this plan's
   `Status` to `Complete`.
-- New env vars (`DB_PORT`, `WEB_PORT`) go in `backend/.env.example` with comments.
+- New env vars (`DB_PORT`, `WEB_PORT`) are documented in a new root `.env.example` (not
+  `backend/.env.example`): docker-compose reads variable substitutions from the repo-root
+  `.env`, whereas `backend/.env` is only the Django container's `env_file`.
 
 ## Verification
+
+Run: 1–3 (via a throwaway `chore/gh-0-smoke` worktree; `task check` passed with the primary
+stack still running on 5432/8000). **Not yet verified:** 4 (`/start-step` end to end) and 5
+(Cursor picking up `AGENTS.md`) — do these next time a step is started / when opening the repo
+in Cursor.
 
 1. `task wt:new -- chore/gh-0-smoke` from the main checkout: worktree appears at
    `../solar-map.worktrees/chore-gh-0-smoke`, branch name exact, based on local `main`,

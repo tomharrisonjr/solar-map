@@ -41,28 +41,25 @@ Follow this procedure exactly:
 
 6. **Create an isolated worktree on the new branch** — this is what keeps step work from
    colliding with whatever branch or process is currently running in the main checkout.
-   Use the `EnterWorktree` tool with
-   `name: "<type>/gh-<child-issue-number>-<desc>"` (e.g. `feature/gh-42-nearest-facility-api`).
-   Do not use raw `git worktree` commands — `EnterWorktree` is the supported mechanism in
-   this environment and handles branch creation, base ref, and later cleanup.
-   - **Known quirk**: the tool sanitizes the `name` you pass — `/` becomes `+` and it
-     prefixes `worktree-` — so the branch it actually creates is *not*
-     `<type>/gh-<issue>-<desc>`. Immediately after `EnterWorktree` returns, rename it:
-     `git branch -m <type>/gh-<child-issue-number>-<desc>`.
-   - **Known quirk**: by default the worktree branches from `origin/<default-branch>`,
-     not local `main` — so if the current session has local commits on `main` that
-     haven't been pushed (e.g. plan-doc edits from this same conversation), the new
-     worktree won't have them. Immediately check for this
-     (`git log --oneline -1 main` vs. the worktree's `git log --oneline -1`) and, if the
-     worktree is behind, run `git merge --ff-only main` inside the worktree to pick up
-     the missing commits before doing anything else.
+   Run `task wt:new -- <type>/gh-<child-issue-number>-<desc>` (e.g.
+   `task wt:new -- feature/gh-42-nearest-facility-api`) from the primary checkout. The task
+   creates the branch from local `main` in a sibling folder
+   (`../solar-map.worktrees/<branch-slug>/`), symlinks `backend/.env`, writes free
+   `DB_PORT`/`WEB_PORT` into a worktree-local `.env`, and prints the worktree path. See
+   the Worktrees section of `AGENTS.md`.
+   - The branch is based on **local** `main`. If the plan doc or other prerequisites were
+     committed on another branch, pass `BASE=<ref>` (e.g.
+     `BASE=chore/gh-6-foo task wt:new -- ...`).
+   - After it returns, do all further work from the printed worktree path (use absolute
+     paths, or `cd` there for each command). In Claude Code you can also switch the
+     session into it with `EnterWorktree` using its `path` parameter.
 
 7. **Update the plan doc inside the new worktree**: set the step's row status to
    `🔄 In Progress` and note the issue number next to the step title (e.g.
    `## Step 3 — Minimal map UI (#43)`). Leave this as an uncommitted change — it becomes
    part of the step's first commit alongside the actual implementation.
 
-8. **Report back**: the child issue URL, the branch name, and confirmation that the
-   session is now working inside the new worktree. Do not start writing implementation
+8. **Report back**: the child issue URL, the branch name, and the worktree path, and
+   confirmation that the session is now working inside it. Do not start writing implementation
    code yet unless the user's original request also asked for that — this command's job
    is to get the workspace ready.
