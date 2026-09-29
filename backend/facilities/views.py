@@ -3,6 +3,9 @@ from __future__ import annotations
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.geos import Point
 from django.db.models import QuerySet
+from django.http import Http404, HttpRequest, HttpResponse
+from django.views.decorators.cache import cache_control
+from django.views.decorators.http import require_GET
 from django.views.generic import TemplateView
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -12,9 +15,11 @@ from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from facilities.models import SolarFacility
 from facilities.serializers import NearestFacilitySerializer, SolarFacilitySerializer
+from facilities.tiles import MVT_CONTENT_TYPE, build_tile, is_valid_tile
 
 DEFAULT_NEAREST_COUNT = 5
 MAX_NEAREST_COUNT = 25
+TILE_CACHE_SECONDS = 3600
 
 
 def _parse_param(params, name: str, cast, low, high):
@@ -34,6 +39,22 @@ class MapView(TemplateView):
     """Server-rendered page hosting the MapLibre map; all data comes from /api/facilities/."""
 
     template_name: str = "facilities/map.html"
+
+
+@require_GET
+@cache_control(public=True, max_age=TILE_CACHE_SECONDS)
+def tile_view(request: HttpRequest, z: int, x: int, y: int) -> HttpResponse:
+    """GET /tiles/<z>/<x>/<y>.mvt — a Mapbox Vector Tile of the facilities in that tile.
+
+    204 (no body) for a valid tile that contains no facilities; 404 for coordinates that
+    aren't a real tile.
+    """
+    if not is_valid_tile(z, x, y):
+        raise Http404("Not a valid tile coordinate.")
+    content = build_tile(z, x, y)
+    if not content:
+        return HttpResponse(status=204)
+    return HttpResponse(content, content_type=MVT_CONTENT_TYPE)
 
 
 class SolarFacilityViewSet(ReadOnlyModelViewSet):
