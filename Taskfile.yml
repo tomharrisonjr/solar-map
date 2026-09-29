@@ -111,7 +111,9 @@ tasks:
         slug="$(echo "$branch" | tr '/' '-')"
         path="{{.WT_ROOT}}/$slug"
 
-        (cd "$path" && docker compose down -v)
+        # --rmi local also deletes the `web` image this worktree built (~1.5 GB, named after the
+        # folder), which would otherwise pile up once per removed worktree.
+        (cd "$path" && docker compose down -v --rmi local)
         rm -f "$path/backend/.env" "$path/.env"
         git worktree remove "$path"
         # -d refuses to delete a branch that hasn't been merged.
