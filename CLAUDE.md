@@ -19,7 +19,7 @@ backend/
   .env.example          copy to backend/.env for local docker-compose runs (gitignored)
   config/               settings, urls, asgi/wsgi
   facilities/           the one app — models, serializers, views, urls, admin, tests.py
-    management/commands/load_uspvdb.py   # ingestion command (stub — see TODO in file)
+    management/commands/load_uspvdb.py   # ingestion command (GeoJSON file/URL → upsert by case_id)
 docs/
   requirements.md       design doc — read this for context before major changes
   plans/                plan docs for non-trivial features (see Workflow below)
