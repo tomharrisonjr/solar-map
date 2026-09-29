@@ -2,7 +2,7 @@
 
 - GitHub Issue: #2
 - Date: 2026-09-28
-- Status: Draft
+- Status: In Progress
 
 ## Steps
 
@@ -10,7 +10,7 @@
 |--------|---|------|
 | ✅ Done | 1 | Ingestion: add `case_id` field + implement `load_uspvdb` |
 | ✅ Done | 2 | Nearest-facility API endpoint |
-| ⬜ Pending | 3 | Minimal map UI (server-rendered, no Next.js yet) |
+| ✅ Done | 3 | Minimal map UI (server-rendered, no Next.js yet) |
 | ⬜ Pending | 4 | Wrap-up (lint, tests, docs) |
 
 ## Context
@@ -76,7 +76,7 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
 - Add tests in `facilities/tests.py` covering: nearest ordering with a few seeded
   facilities, and missing/invalid `lat`/`lon` returning 400.
 
-## Step 3 — Minimal map UI (server-rendered, no Next.js yet)
+## Step 3 — Minimal map UI (server-rendered, no Next.js yet) (#10)
 
 - New `facilities/templates/facilities/map.html` + a plain Django view (not DRF) wired
   in `config/urls.py` at `/` (or `/map/`), rendering a single page that loads MapLibre
@@ -91,6 +91,33 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
   learning-project checkpoint.
 - Verify manually: `docker compose up`, load `http://localhost:8000/`, click the map,
   confirm nearest facilities highlight and list correctly.
+
+**As shipped:**
+
+- `MapView` (a `TemplateView`) in `facilities/views.py`, wired at `/` in `config/urls.py`;
+  `map.html` loads MapLibre GL JS 5.6.0 from unpkg (pinned), with an OpenStreetMap raster
+  basemap (no API key). `map.js` is a static file; result names are rendered with
+  `textContent`, not `innerHTML`, since they come from external data.
+- Nearest markers use the API's denormalized `centroid` property so results stay visible
+  at country zoom, where panel-array polygons are only specks.
+- **OSM tile usage policy** (<https://operations.osmfoundation.org/policies/tiles/>): the
+  first version was blocked with `403 Access Blocked` because Django's default
+  `Referrer-Policy: same-origin` stripped the `Referer` from tile requests, which the policy
+  requires browsers to send. Fixed with `SECURE_REFERRER_POLICY =
+  "strict-origin-when-cross-origin"` (regression test added), and attribution is forced
+  expanded (`attributionControl: { compact: false }`) since it may not sit behind a toggle.
+  The public OSM server is best-effort with no SLA; use a tile provider before deploying.
+- **Deviation — Django pin bumped** from `>=5.1,<5.2` to `>=5.2.8,<5.3`. The image runs
+  Python 3.14, which Django 5.1 doesn't support: the test client's template-context copy
+  raised `AttributeError: 'super' object has no attribute 'dicts'`, and the same `Context`
+  copy is used by `{% include %}` (so e.g. the admin). 5.2.8 is the first 5.2 release
+  supporting 3.14. DRF 3.15 / DRF-GIS 1.1 work unchanged; image rebuilt.
+- Verified: `task check` (8 tests, incl. page + static-file tests) and migration drift check
+  pass. The real server was loaded with 6 synthetic facilities via `load_uspvdb` and
+  `/`, `/static/facilities/map.js`, `/api/facilities/` and `/nearest/` were fetched over
+  HTTP; `map.js` was also run under Node with stubbed MapLibre/DOM against the live API
+  (load + click → correct sidebar, markers, bounds). **Not verified:** actual in-browser
+  rendering (tiles, layer paint, real click) — needs a look at the page.
 
 ## Step 4 — Wrap-up per repo workflow
 

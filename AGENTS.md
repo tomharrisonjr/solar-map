@@ -8,7 +8,8 @@ repository. `CLAUDE.md` is a symlink to this file — edit `AGENTS.md`.
 A personal learning project: a single Django/GeoDjango backend backed by PostGIS,
 loading the USPVDB solar-facility dataset and exposing it as a GeoJSON API. See
 `docs/requirements.md` for the full design (goals, dataset choice, data model, risks).
-There is no frontend yet — a Next.js map UI is a later phase, not part of this scaffold.
+The only UI is a minimal server-rendered MapLibre page at `/` (no build step); a Next.js
+frontend is a later phase.
 
 ```
 Taskfile.yml           dev workflow: lint/test/check/migrate, worktree new/rm/list (`task --list`)
@@ -22,6 +23,8 @@ backend/
   .env.example          copy to backend/.env for local docker-compose runs (gitignored)
   config/               settings, urls, asgi/wsgi
   facilities/           the one app — models, serializers, views, urls, admin, tests.py
+    templates/facilities/map.html   # map page served at /
+    static/facilities/map.js        # MapLibre map, fetches /api/facilities/ (+ /nearest/ on click)
     management/commands/load_uspvdb.py   # ingestion command (GeoJSON file/URL → upsert by case_id)
 docs/
   requirements.md       design doc — read this for context before major changes
@@ -144,6 +147,12 @@ rather than raw `git worktree` so setup is consistent:
 - **API layer**: `djangorestframework-gis`'s `GeoFeatureModelSerializer` for GeoJSON
   output (see `facilities/serializers.py`); DRF `ModelViewSet`/`ReadOnlyModelViewSet` +
   router for endpoints (see `facilities/views.py` + `facilities/urls.py`).
+- **OpenStreetMap tiles**: the map's basemap uses `tile.openstreetmap.org`, which is bound
+  by <https://operations.osmfoundation.org/policies/tiles/> and blocks violators with a
+  403. Keep: `SECURE_REFERRER_POLICY` non-restrictive (browsers must send a valid
+  `Referer`), attribution always visible (not collapsed), HTTPS and the standard hostname,
+  no pre-fetching/bulk downloads, no `no-cache` headers on tiles. It's best-effort with no
+  SLA — switch to a tile provider before deploying or heavy use.
 - **Annotate class attributes.** New and touched classes should carry PEP 526 variable
   annotations on class-level attributes — model fields, `Meta`/config attributes, and
   viewset/serializer attributes (`queryset: QuerySet[SolarFacility] = ...`,

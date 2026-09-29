@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.geos import Point
 from django.db.models import QuerySet
+from django.views.generic import TemplateView
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
@@ -27,6 +28,12 @@ def _parse_param(params, name: str, cast, low, high):
     if not low <= value <= high:  # also rejects NaN
         raise ValidationError({name: f"Must be between {low} and {high}."})
     return value
+
+
+class MapView(TemplateView):
+    """Server-rendered page hosting the MapLibre map; all data comes from /api/facilities/."""
+
+    template_name: str = "facilities/map.html"
 
 
 class SolarFacilityViewSet(ReadOnlyModelViewSet):
