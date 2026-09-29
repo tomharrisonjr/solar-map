@@ -46,6 +46,7 @@ tasks:
       - git worktree list
 
   wt:new:
+    silent: true
     desc: "Create a worktree + branch: task wt:new -- <type>/gh-<n>-<desc>"
     preconditions:
       - sh: test -n "{{.CLI_ARGS}}"
@@ -77,6 +78,7 @@ tasks:
         echo "Ports:          $(tr '\n' ' ' < "$path/.env")"
 
   wt:rm:
+    silent: true
     desc: "Remove a worktree, its compose stack/volume, and its merged branch: task wt:rm -- <branch>"
     preconditions:
       - sh: test -n "{{.CLI_ARGS}}"
