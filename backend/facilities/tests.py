@@ -1,13 +1,23 @@
+import io
 import json
 import tempfile
+import urllib.error
+import zipfile
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.contrib.staticfiles import finders
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
+from facilities.management.commands.load_uspvdb import (
+    DEFAULT_SOURCE,
+    DOWNLOAD_TIMEOUT_SECONDS,
+    USER_AGENT,
+)
 from facilities.models import SolarFacility
 
 
@@ -139,6 +149,100 @@ class LoadUspvdbCommandTests(TestCase):
             facility.refresh_from_db()
             self.assertEqual(facility.name, "Renamed Solar Farm")
             self.assertEqual(facility.eia_id, "12345")
+
+    def _collection_bytes(self, *case_ids: int) -> bytes:
+        features = [self._feature(case_id=case_id) for case_id in case_ids]
+        return json.dumps({"type": "FeatureCollection", "features": features}).encode()
+
+    def _zip_bytes(self, files: dict[str, bytes]) -> bytes:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            for name, content in files.items():
+                archive.writestr(name, content)
+        return buffer.getvalue()
+
+    def test_loads_versioned_geojson_from_official_style_zip(self) -> None:
+        # Mirrors the real release: CHANGELOG + XML metadata + a *versioned* .geojson name.
+        raw = self._zip_bytes(
+            {
+                "CHANGELOG.txt": b"changes",
+                "uspvdb_v9_9_20990101.geojson": self._collection_bytes(1, 2),
+                "uspvdb_v9_9_20990101.xml": b"<metadata/>",
+            }
+        )
+        out = StringIO()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "uspvdbGeoJSON.zip"
+            path.write_bytes(raw)
+
+            call_command("load_uspvdb", str(path), stdout=out)
+
+        self.assertEqual(SolarFacility.objects.count(), 2)
+        self.assertIn("uspvdb_v9_9_20990101.geojson", out.getvalue())
+        self.assertIn("Please cite: Fujita", out.getvalue())
+
+    def test_zip_without_geojson_raises_command_error(self) -> None:
+        raw = self._zip_bytes({"CHANGELOG.txt": b"changes"})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "empty.zip"
+            path.write_bytes(raw)
+
+            with self.assertRaisesMessage(CommandError, "found 0"):
+                call_command("load_uspvdb", str(path), stdout=StringIO())
+
+        self.assertEqual(SolarFacility.objects.count(), 0)
+
+    def test_zip_with_several_geojson_files_raises_command_error(self) -> None:
+        raw = self._zip_bytes(
+            {"a.geojson": self._collection_bytes(1), "b.geojson": self._collection_bytes(2)}
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "two.zip"
+            path.write_bytes(raw)
+
+            with self.assertRaisesMessage(CommandError, "found 2"):
+                call_command("load_uspvdb", str(path), stdout=StringIO())
+
+        self.assertEqual(SolarFacility.objects.count(), 0)
+
+    def test_defaults_to_official_url_when_source_omitted(self) -> None:
+        raw = self._zip_bytes({"uspvdb_v9_9_20990101.geojson": self._collection_bytes(7)})
+        with patch("facilities.management.commands.load_uspvdb.urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = raw
+
+            call_command("load_uspvdb", stdout=StringIO())
+
+        urlopen.assert_called_once()
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, DEFAULT_SOURCE)
+        # USGS returns 403 to Python's default urllib agent, so we must identify the app.
+        self.assertEqual(request.get_header("User-agent"), USER_AGENT)
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], DOWNLOAD_TIMEOUT_SECONDS)
+        self.assertTrue(SolarFacility.objects.filter(case_id=7).exists())
+
+    def test_download_failure_raises_command_error(self) -> None:
+        with patch(
+            "facilities.management.commands.load_uspvdb.urllib.request.urlopen",
+            side_effect=urllib.error.URLError("no route"),
+        ):
+            with self.assertRaisesMessage(CommandError, "Could not download"):
+                call_command("load_uspvdb", stdout=StringIO())
+
+    def test_missing_local_file_raises_command_error(self) -> None:
+        with self.assertRaisesMessage(CommandError, "Could not read"):
+            call_command("load_uspvdb", "/nonexistent/uspvdb.geojson", stdout=StringIO())
+
+    def test_non_geojson_content_raises_command_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            not_json = Path(tmp_dir) / "bad.geojson"
+            not_json.write_text("<html>oops</html>")
+            no_features = Path(tmp_dir) / "empty.geojson"
+            no_features.write_text('{"type": "Feature"}')
+
+            with self.assertRaisesMessage(CommandError, "not valid JSON"):
+                call_command("load_uspvdb", str(not_json), stdout=StringIO())
+            with self.assertRaisesMessage(CommandError, "FeatureCollection"):
+                call_command("load_uspvdb", str(no_features), stdout=StringIO())
 
 
 class MapViewTests(TestCase):
