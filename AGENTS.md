@@ -145,6 +145,10 @@ rather than raw `git worktree` so setup is consistent:
 - `task wt:list` — show worktrees.
 - Dependencies, build caches and other gitignored state aren't shared between worktrees;
   Docker containers/volumes are per-worktree (named after the folder).
+- **Claude Code:** `/start-step` switches the session into the new worktree with the
+  `EnterWorktree` tool (`path` parameter). `.claude/settings.json` allows that tool without a
+  prompt. `ExitWorktree` is deliberately *not* allowed: with `action: "remove"` it deletes a
+  worktree and its branch, so it keeps asking.
 
 ## Conventions
 
