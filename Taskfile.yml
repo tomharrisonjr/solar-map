@@ -40,6 +40,28 @@ tasks:
       - docker compose up -d --wait db
       - docker compose run --rm web python manage.py migrate
 
+  env:
+    desc: Create backend/.env from backend/.env.example if it doesn't exist
+    # Skipped when backend/.env already exists (also true in worktrees: wt:new symlinks it).
+    status:
+      - test -e backend/.env
+    cmds:
+      - cp backend/.env.example backend/.env
+      - echo "Created backend/.env from backend/.env.example"
+
+  data:load:
+    desc: "Download and load the USPVDB dataset (safe to re-run): task data:load [-- <path-or-url>]"
+    cmds:
+      - task: migrate
+      - docker compose run --rm web python manage.py load_uspvdb {{.CLI_ARGS}}
+
+  setup:
+    desc: First-time setup on a fresh clone — .env, build image, migrate, load the dataset
+    cmds:
+      - task: env
+      - docker compose build web
+      - task: data:load
+
   wt:list:
     desc: List git worktrees
     cmds:
