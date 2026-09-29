@@ -61,7 +61,8 @@ skillset and could be a v2 direction once the core app works.
 3. **API layer**: expose facilities as GeoJSON via Django REST Framework +
    `djangorestframework-gis`, suitable for consumption by a map-based frontend.
 4. **Basic map UI**: display facilities on a map and let a user click/search a location to
-   find the nearest facility (or facilities).
+   find the nearest facility (or facilities). *Shipped as a minimal server-rendered page at
+   `/` (MapLibre GL JS from a CDN); click-to-find-nearest only, no search box yet.*
 
 ## Stretch Features
 
@@ -88,6 +89,8 @@ solar-map/
 │   │   ├── serializers.py
 │   │   ├── views.py
 │   │   ├── urls.py
+│   │   ├── templates/facilities/map.html   # minimal map page (served at /)
+│   │   ├── static/facilities/map.js        # MapLibre map + nearest-facility sidebar
 │   │   └── management/commands/
 │   │       └── load_uspvdb.py  # data ingestion
 │   └── requirements.txt
@@ -100,7 +103,8 @@ solar-map/
   locally; AWS RDS for Postgres with the PostGIS extension enabled in production).
 - **API**: Django REST Framework + `djangorestframework-gis` for GeoJSON serialization.
 - **Frontend**: optional Next.js app using MapLibre/Mapbox GL, consuming the GeoJSON API.
-  May start with a minimal server-rendered template and add Next.js later.
+  Started with a minimal server-rendered template (`facilities/map.html`, MapLibre GL JS
+  via CDN, no build step); Next.js can come later.
 - **Hosting**: AWS. Containerized Django app (pattern consistent with existing personal
   AWS/ECS/Terraform setup); Postgres/PostGIS on RDS rather than in-container, since RDS
   supports the PostGIS extension directly.

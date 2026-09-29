@@ -4,6 +4,7 @@ from io import StringIO
 from pathlib import Path
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.contrib.staticfiles import finders
 from django.core.management import call_command
 from django.test import TestCase
 
@@ -138,3 +139,23 @@ class LoadUspvdbCommandTests(TestCase):
             facility.refresh_from_db()
             self.assertEqual(facility.name, "Renamed Solar Farm")
             self.assertEqual(facility.eia_id, "12345")
+
+
+class MapViewTests(TestCase):
+    def test_root_renders_map_page(self) -> None:
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "facilities/map.html")
+        self.assertContains(response, 'id="map"')
+        self.assertContains(response, "/static/facilities/map.js")
+
+    def test_page_does_not_suppress_referer_for_osm_tiles(self) -> None:
+        # OSM's tile usage policy requires browsers to send a valid Referer; Django's default
+        # "same-origin" policy would strip it from cross-origin tile requests (403 Access Blocked).
+        response = self.client.get("/")
+
+        self.assertEqual(response["Referrer-Policy"], "strict-origin-when-cross-origin")
+
+    def test_map_script_is_served_by_staticfiles(self) -> None:
+        self.assertIsNotNone(finders.find("facilities/map.js"))
