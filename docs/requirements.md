@@ -57,8 +57,11 @@ All four are implemented (see `docs/plans/uspvdb-ingestion-and-map-ui.md`).
 
 1. ✅ **Data ingestion**: management command to load USPVDB GeoJSON into the database,
    including computing/storing a denormalized centroid point per facility.
-   *`load_uspvdb <path-or-url>` upserts by `case_id`; it takes an extracted GeoJSON file
-   (no zip handling). Not yet run against the full real dataset — only synthetic data.*
+   *`load_uspvdb [<path-or-url>]` upserts by `case_id`. With no argument it downloads the
+   official USGS zip itself and loads the versioned `.geojson` inside (a local file or URL,
+   zip or bare GeoJSON, also works); `task setup` / `task data:load` wrap it. Run against
+   the full real dataset (6,611 facilities, ~7 s). The data is not committed. Upsert never
+   deletes facilities that USGS later removes (a `--prune` flag is deferred).*
 2. ✅ **Nearest-facility query**: given a lat/lon, return the N closest solar facilities
    (via GeoDjango ORM `Distance` annotation initially; consider raw SQL with the PostGIS
    `<->` KNN operator later for performance comparison).

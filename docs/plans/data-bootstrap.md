@@ -2,7 +2,7 @@
 
 - GitHub Issue: #14
 - Date: 2026-09-29
-- Status: In Progress
+- Status: Complete
 
 ## Steps
 
@@ -10,7 +10,7 @@
 |--------|---|------|
 | ✅ Done | 1 | `load_uspvdb` accepts zip/URL and defaults to the official source |
 | ✅ Done | 2 | Taskfile: `data:load` and `setup` |
-| ⬜ Pending | 3 | Getting-started docs + wrap-up |
+| ✅ Done | 3 | Getting-started docs + wrap-up |
 
 ## Context
 
@@ -83,13 +83,42 @@ from `.env.example` if missing, `docker compose build web`, then `data:load`. Re
   once and never overwrites an edited one; 12 fresh-volume `migrate` runs, 0 failures;
   `task check` passes (16 tests).
 
-## Step 3 — Getting-started docs + wrap-up
+## Step 3 — Getting-started docs + wrap-up (#21)
 
 - New short `README.md` (prereqs: Docker, Task; `task setup`; `docker compose up`; open
   `/`); mention `task data:load` for refreshes and that upsert never deletes rows removed
   upstream (a `--prune` flag is deferred).
 - `AGENTS.md` Commands + `docs/requirements.md` ingestion note; plan `Status: Complete`.
 - Note the local-DB-volume recreate step (`down -v`) for old-image volumes.
+
+**Added scope (requested at the start of this step):** the README documents every dependency —
+Docker with Compose v2, Task (with download link), Git 2.31+ — with install links, a check
+command and the tested version for each; what is *not* needed (Python, GDAL, PostGIS, Node);
+internet, disk (~3 GB) and port requirements; and platform notes (macOS Apple Silicon tested;
+Linux expected; Windows via WSL 2, untested), so someone can read it cold and run the app.
+
+**As shipped:**
+
+- `README.md`: prerequisites table, quick start (`task setup`, `docker compose up`, open `/`),
+  everyday commands, a "Without Task" equivalent, configuration (`backend/.env`, optional root
+  `.env` for ports), the data section (citation, refresh, loading a manually downloaded file —
+  which must sit under `backend/`), the API, troubleshooting (Docker not running, ports,
+  Task missing, old-volume collation error, offline download, empty map, OSM 403), workflow
+  pointers and licensing. It states the current large-payload limitation (#15) and that the
+  repo has no code license yet.
+- `AGENTS.md` (Commands + layout) and `docs/requirements.md` (ingestion note) updated; the
+  completed ingestion plan's "run against the real download" follow-up is marked done.
+- **Verified by following the README literally:** the "Without Task" commands from an empty
+  volume (6,611 facilities), the documented `/`, `/admin/login/` and `nearest` example
+  (returns real Los Angeles facilities) and a `400` on bad input; loading a manually
+  downloaded zip placed in `backend/`; a path outside `backend/` fails with the clear
+  "Could not read" error. This caught a bug in the first draft: `cp -n` exits non-zero when it
+  skips an existing file, so the README uses `[ -f backend/.env ] || cp …` instead.
+- **Extra fix (found while collecting sizes for the README):** `task wt:rm` left each
+  worktree's ~1.5 GB `web` image behind. It now runs `docker compose down -v --rmi local`
+  (tested on a throwaway worktree: image removed). Ten images already leaked by earlier
+  removed worktrees were deleted by hand.
+- Status set to `Complete`.
 
 ## Verification
 

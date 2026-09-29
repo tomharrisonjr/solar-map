@@ -12,7 +12,8 @@ The only UI is a minimal server-rendered MapLibre page at `/` (no build step); a
 frontend is a later phase.
 
 ```
-Taskfile.yml           dev workflow: lint/test/check/migrate, worktree new/rm/list (`task --list`)
+README.md              getting started for humans: prerequisites, `task setup`, troubleshooting
+Taskfile.yml           dev workflow: setup/data:load/check/migrate, worktree new/rm/list (`task --list`)
 .env.example            docker-compose port variables (DB_PORT, WEB_PORT); copy to .env (gitignored)
 backend/
   Dockerfile           python:3.14-slim + gdal-bin/libgdal-dev/libgeos-dev/libproj-dev
@@ -39,11 +40,19 @@ schema history — they're generated.
 [Task](https://taskfile.dev) (`Taskfile.yml`) wraps the common workflows — run `task --list`:
 
 ```
+task setup       # first time on a machine: backend/.env, build image, migrate, download + load data
 task check       # lint + tests — the "before done" gate
 task lint        # ruff
 task test        # Django tests
 task migrate     # start db, apply migrations
+task data:load   # (re)load USPVDB from the official URL; `-- <path-or-url>` to override the source
+task env         # create backend/.env from the example if missing (setup runs this)
 ```
+
+`load_uspvdb` with no argument downloads the official zip itself and finds the versioned
+`.geojson` inside; a local file must live under `backend/` (the only host folder mounted
+into the container). The dataset is never committed. `README.md` documents installing the
+prerequisites (Docker, Task, Git) — keep it in sync when tooling changes.
 
 Everything runs through Docker Compose (GDAL/GEOS live in the `web` image, not on the
 host — there's no host GDAL install to maintain). The raw commands, for anything the
@@ -56,7 +65,7 @@ docker compose run --rm web python manage.py migrate
 docker compose run --rm web python manage.py makemigrations
 docker compose run --rm web python manage.py createsuperuser
 docker compose run --rm web python manage.py test          # tests
-docker compose run --rm web python manage.py load_uspvdb <path-or-url>   # data ingestion
+docker compose run --rm web python manage.py load_uspvdb [<path-or-url>] # data ingestion (default: official URL)
 docker compose run --rm web ruff check .                   # lint
 docker compose run --rm web ruff check --fix .              # lint, autofixing what's safe
 docker compose up                                          # web (:8000) + db together

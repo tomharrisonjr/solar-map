@@ -147,10 +147,14 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
 
 **Open follow-ups (not blocking, deliberately not done here):**
 
-- Run `load_uspvdb` against the real USPVDB download — so far it has only seen synthetic
-  data. `name`/`state`/`capacity_mw` are non-null columns, so a feature missing one would
-  abort the whole load; revisit once real data is loaded. Migration `0002` adds `case_id`
-  with `default=0, unique=True`, which is fine on an empty table only.
+- ~~Run `load_uspvdb` against the real USPVDB download~~ — **done** (see
+  `docs/plans/data-bootstrap.md`): USPVDB v4.0's 6,611 facilities load in ~7 s, re-runs are
+  idempotent, and none of the columns we use has nulls or sentinel values, so the
+  "missing `name`/`state`/`capacity_mw` aborts the whole load" concern didn't materialize
+  (it could still with a future release). Migration `0002` adds `case_id` with
+  `default=0, unique=True`, which is fine on an empty table only.
+- The real data showed `/api/facilities/` returns ~25 MB — tracked in
+  `docs/plans/vector-tile-map.md`.
 - Use a tile provider (or self-host) before deploying or heavy use; the public OSM server
   is best-effort with no SLA.
 - Local database volumes created by the old `postgis/postgis` image must be recreated
