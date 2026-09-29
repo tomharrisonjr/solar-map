@@ -2,13 +2,13 @@
 
 - GitHub Issue: #14
 - Date: 2026-09-29
-- Status: Draft
+- Status: In Progress
 
 ## Steps
 
 | Status | # | Step |
 |--------|---|------|
-| ⬜ Pending | 1 | `load_uspvdb` accepts zip/URL and defaults to the official source |
+| ✅ Done | 1 | `load_uspvdb` accepts zip/URL and defaults to the official source |
 | ⬜ Pending | 2 | Taskfile: `data:load` and `setup` |
 | ⬜ Pending | 3 | Getting-started docs + wrap-up |
 
@@ -26,7 +26,7 @@ Docker + Task, then `task setup`.
 Decision: put download/unzip logic in the Django command (Python `zipfile` + `urllib`, already
 used), not `curl`/`unzip` in the Taskfile — no host tools, testable, identical on any OS.
 
-## Step 1 — `load_uspvdb` accepts zip/URL and defaults to the official source
+## Step 1 — `load_uspvdb` accepts zip/URL and defaults to the official source (#17)
 
 `backend/facilities/management/commands/load_uspvdb.py`:
 
@@ -40,6 +40,21 @@ used), not `curl`/`unzip` in the Taskfile — no host tools, testable, identical
 Tests (`facilities/tests.py`, no network): in-memory zip via `zipfile` → `call_command`; zip
 with no `.geojson` → `CommandError`; default-source path via
 `unittest.mock.patch("...load_uspvdb.urllib.request.urlopen")` returning zip bytes.
+
+**As shipped:**
+
+- Implemented as planned: optional `source` defaulting to `DEFAULT_SOURCE`, bytes-first
+  loading (`zipfile.is_zipfile` sniffing, so a zip, a bare `.geojson`, a path or a URL all
+  work), single-`.geojson`-member matching, `CommandError` for download/read/parse/zip-layout
+  failures, and the USGS citation plus the loaded file name printed after a successful load.
+  The printed citation omits the version (it changes each release); the file name carries it.
+- **Found by running it live, not by the mocked tests:** USGS answers `403 Forbidden` to
+  Python's default `Python-urllib/x.y` User-Agent (curl was fine). The command now sends an
+  honest `solar-map/1.0 (+repo URL)` agent; a test asserts it.
+- Tests: 7 new (16 total) — versioned zip, no/multiple `.geojson` in zip, default URL +
+  User-Agent + timeout via mock, download failure, missing file, non-JSON / non-FeatureCollection.
+- Verified: `task check` passes; `manage.py load_uspvdb` with **no arguments** against the
+  real USGS URL on a fresh database created 6,611 facilities in 7.6 s.
 
 ## Step 2 — Taskfile: `data:load` and `setup`
 
