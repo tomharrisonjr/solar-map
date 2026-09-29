@@ -12,7 +12,10 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U solar_map -d solar_map"]
+      # -h 127.0.0.1 probes over TCP: on a fresh volume the image first runs a temporary
+      # init server that listens only on the Unix socket, so a socket probe can report
+      # "healthy" just before the real server restarts. Only the real server listens on TCP.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U solar_map -d solar_map"]
       interval: 5s
       timeout: 5s
       retries: 5

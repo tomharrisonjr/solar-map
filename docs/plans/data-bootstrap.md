@@ -9,7 +9,7 @@
 | Status | # | Step |
 |--------|---|------|
 | ✅ Done | 1 | `load_uspvdb` accepts zip/URL and defaults to the official source |
-| ⬜ Pending | 2 | Taskfile: `data:load` and `setup` |
+| ✅ Done | 2 | Taskfile: `data:load` and `setup` |
 | ⬜ Pending | 3 | Getting-started docs + wrap-up |
 
 ## Context
@@ -56,12 +56,32 @@ with no `.geojson` → `CommandError`; default-source path via
 - Verified: `task check` passes; `manage.py load_uspvdb` with **no arguments** against the
   real USGS URL on a fresh database created 6,611 facilities in 7.6 s.
 
-## Step 2 — Taskfile: `data:load` and `setup`
+## Step 2 — Taskfile: `data:load` and `setup` (#19)
 
 `Taskfile.yml`: `data:load` (`task migrate` first, then
 `docker compose run --rm web python manage.py load_uspvdb`); `setup` = create `backend/.env`
 from `.env.example` if missing, `docker compose build web`, then `data:load`. Reuse the existing
 `migrate` task.
+
+**As shipped:**
+
+- Three tasks in `Taskfile.yml`: `env` (copies `backend/.env.example` → `backend/.env`; uses a
+  `status:` check so it's skipped when the file exists — which also covers worktrees, where
+  `wt:new` already symlinks it), `data:load` (`migrate`, then `load_uspvdb {{.CLI_ARGS}}`, so
+  `task data:load -- <path-or-url>` overrides the source), and `setup` (`env`, `docker compose
+  build web`, `data:load`).
+- **Addition — defensive Postgres healthcheck:** `docker-compose.yml` now probes with
+  `pg_isready -h 127.0.0.1` (TCP). On a fresh volume the image first runs a temporary init
+  server that listens only on the Unix socket, so a socket probe can report healthy just
+  before the real server restarts; only the real server listens on TCP. A "connection
+  refused" right after a fresh DB came up was seen once earlier in the project, but it did
+  **not** reproduce in 6 fresh-volume runs before the change or 6 after, so this is
+  hardening for slower machines, not a demonstrated fix.
+- Verified from an empty volume: `task setup` → 6,611 facilities created (16 s including the
+  download); a second `task data:load` → 0 created / 6,611 updated; `task data:load --
+  /nonexistent` → clean `CommandError`; `task env` in a scratch git repo creates the file
+  once and never overwrites an edited one; 12 fresh-volume `migrate` runs, 0 failures;
+  `task check` passes (16 tests).
 
 ## Step 3 — Getting-started docs + wrap-up
 
