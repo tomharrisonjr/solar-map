@@ -131,7 +131,7 @@ memory and upserts the facilities by their stable `case_id`.
 | Endpoint | Returns |
 | --- | --- |
 | `GET /api/facilities/` | Facilities as a paged GeoJSON `FeatureCollection` (100 per page; `?page=<n>`, `?page_size=<n>` up to 1000) with `count`, `next` and `previous` alongside `features`. The full set is ~25 MB, so page through it. |
-| `GET /tiles/<z>/<x>/<y>.mvt` | A [Mapbox Vector Tile](https://github.com/mapbox/vector-tile-spec) of the facilities in that map tile: layer `points` (centroids) at every zoom, plus layer `polygons` from zoom 9. `204` if the tile is empty, `404` for invalid coordinates. This is what the map uses. |
+| `GET /tiles/<z>/<x>/<y>.mvt` | A [Mapbox Vector Tile](https://github.com/mapbox/vector-tile-spec) of the facilities in that map tile. Below zoom 9 it has a `points` layer (one dot per facility, thinned to about one per screen pixel, carrying just the feature `id`); from zoom 9 up it has a `polygons` layer (the real panel-array shapes with `name`, `state`, `capacity_mw`, …). `204` if the tile is empty, `404` for invalid coordinates. This is what the map uses: the default US view downloads about 57 KB instead of 25 MB. |
 | `GET /api/facilities/nearest/?lat=<lat>&lon=<lon>&n=<count>` | The `n` closest facilities (default 5, max 25) to a point, nearest first, each with a `distance_m` property in metres. Invalid input returns `400`. |
 | `GET /admin/` | Django admin (after creating a superuser) |
 

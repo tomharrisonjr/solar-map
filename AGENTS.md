@@ -24,6 +24,7 @@ backend/
   .env.example          copy to backend/.env for local docker-compose runs (gitignored)
   config/               settings, urls, asgi/wsgi
   facilities/           the one app — models, serializers, views, urls, admin, tests.py
+    tiles.py            # vector tiles built in PostGIS (ST_AsMVT), served at /tiles/{z}/{x}/{y}.mvt
     templates/facilities/map.html   # map page served at /
     static/facilities/map.js        # MapLibre map, fetches /api/facilities/ (+ /nearest/ on click)
     management/commands/load_uspvdb.py   # ingestion command (GeoJSON file/URL → upsert by case_id)
@@ -160,6 +161,15 @@ rather than raw `git worktree` so setup is consistent:
 - **API layer**: `djangorestframework-gis`'s `GeoFeatureModelSerializer` for GeoJSON
   output (see `facilities/serializers.py`); DRF `ModelViewSet`/`ReadOnlyModelViewSet` +
   router for endpoints (see `facilities/views.py` + `facilities/urls.py`).
+- **Vector tiles (`facilities/tiles.py`)**: the map reads facilities from
+  `/tiles/{z}/{x}/{y}.mvt`, never from the list API (the full polygon set is ~25 MB). The tile
+  SQL is static text with `z/x/y` and the constants bound as parameters — never build it with
+  string formatting. Keep the bbox filter index-friendly: transform the *tile envelope* to 4326
+  and use `column && envelope` (GiST index on `geom`/`centroid`), don't transform the column.
+  Layers are disjoint by zoom (`points` below `POLYGON_MIN_ZOOM`, `polygons` from it), and the
+  page gets `POLYGON_MIN_ZOOM` from the server so client layers and tiles can't drift apart.
+  Send only what the client draws; measure with real data before tuning (numbers in
+  `docs/plans/vector-tile-map.md`).
 - **OpenStreetMap tiles**: the map's basemap uses `tile.openstreetmap.org`, which is bound
   by <https://operations.osmfoundation.org/policies/tiles/> and blocks violators with a
   403. Keep: `SECURE_REFERRER_POLICY` non-restrictive (browsers must send a valid

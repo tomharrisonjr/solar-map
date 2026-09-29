@@ -317,33 +317,82 @@ def _tile_for(lon: float, lat: float, z: int) -> tuple[int, int]:
     return x, y
 
 
+def _read_varint(buf: bytes, pos: int) -> tuple[int, int]:
+    result = shift = 0
+    while True:
+        byte = buf[pos]
+        pos += 1
+        result |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return result, pos
+        shift += 7
+
+
+def _protobuf_fields(buf: bytes):
+    """Yield (field_number, value) for each top-level field of a protobuf message. Varints come
+    back as ints, length-delimited fields as bytes."""
+    pos = 0
+    while pos < len(buf):
+        key, pos = _read_varint(buf, pos)
+        field, wire = key >> 3, key & 7
+        if wire == 0:
+            value, pos = _read_varint(buf, pos)
+        elif wire == 2:
+            length, pos = _read_varint(buf, pos)
+            value, pos = buf[pos : pos + length], pos + length
+        else:
+            raise ValueError(f"unexpected protobuf wire type {wire}")
+        yield field, value
+
+
+def decode_tile(tile: bytes) -> dict[str, list[int | None]]:
+    """Minimal Mapbox Vector Tile reader: {layer name: [feature id, ...]} — enough to assert which
+    layers a tile has and which facilities are in them, without a decoding dependency."""
+    layers: dict[str, list[int | None]] = {}
+    for field, layer in _protobuf_fields(tile):
+        if field != 3:  # Tile.layers
+            continue
+        name, ids = "", []
+        for layer_field, value in _protobuf_fields(layer):
+            if layer_field == 1:  # Layer.name
+                name = value.decode()
+            elif layer_field == 2:  # Layer.features
+                feature_id = next((v for f, v in _protobuf_fields(value) if f == 1), None)
+                ids.append(feature_id)
+        layers[name] = ids
+    return layers
+
+
 class TileEndpointTests(TestCase):
-    """/tiles/{z}/{x}/{y}.mvt. A tile is a protobuf whose layer names and string values are plain
-    bytes, so we assert on those instead of decoding it (no MVT-decoding dependency)."""
+    """/tiles/{z}/{x}/{y}.mvt, asserted by decoding the tile with the small reader above."""
 
     LON, LAT = 10.0, 45.0
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def _make_facility(cls, case_id: int, lon: float, lat: float, capacity_mw: float = 12.5):
         d = 0.01
         polygon = Polygon(
             (
-                (cls.LON - d, cls.LAT - d),
-                (cls.LON - d, cls.LAT + d),
-                (cls.LON + d, cls.LAT + d),
-                (cls.LON + d, cls.LAT - d),
-                (cls.LON - d, cls.LAT - d),
+                (lon - d, lat - d),
+                (lon - d, lat + d),
+                (lon + d, lat + d),
+                (lon + d, lat - d),
+                (lon - d, lat - d),
             )
         )
-        SolarFacility.objects.create(
-            case_id=1,
-            name="Tile Test Farm",
+        return SolarFacility.objects.create(
+            case_id=case_id,
+            name=f"Tile Test Farm {case_id}",
             state="CA",
-            capacity_mw=12.5,
+            capacity_mw=capacity_mw,
             install_year=2020,
             geom=MultiPolygon(polygon),
-            centroid=Point(cls.LON, cls.LAT),
+            centroid=Point(lon, lat),
         )
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.facility = cls._make_facility(1, cls.LON, cls.LAT)
 
     def _get_tile(self, z: int, x: int, y: int, **extra):
         return self.client.get(f"/tiles/{z}/{x}/{y}.mvt", **extra)
@@ -352,25 +401,47 @@ class TileEndpointTests(TestCase):
         x, y = _tile_for(self.LON, self.LAT, z)
         return self._get_tile(z, x, y, **extra)
 
-    def test_world_tile_has_points_but_no_polygons(self) -> None:
+    def test_world_tile_has_only_the_points_layer(self) -> None:
         response = self._get_tile(0, 0, 0)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], MVT_CONTENT_TYPE)
-        self.assertIn(b"points", response.content)
-        self.assertNotIn(b"polygons", response.content)
-        self.assertIn(b"Tile Test Farm", response.content)
+        self.assertEqual(decode_tile(response.content), {"points": [self.facility.id]})
+        # Dots carry only the feature id: no names or other properties.
+        self.assertNotIn(b"Tile Test Farm", response.content)
 
-    def test_polygon_layer_starts_at_polygon_min_zoom(self) -> None:
-        below = self._get_facility_tile(POLYGON_MIN_ZOOM - 1)
-        at = self._get_facility_tile(POLYGON_MIN_ZOOM)
-        high = self._get_facility_tile(14)
+    def test_layers_are_disjoint_and_switch_at_polygon_min_zoom(self) -> None:
+        below = decode_tile(self._get_facility_tile(POLYGON_MIN_ZOOM - 1).content)
+        at = decode_tile(self._get_facility_tile(POLYGON_MIN_ZOOM).content)
+        high = decode_tile(self._get_facility_tile(14).content)
 
-        self.assertNotIn(b"polygons", below.content)
-        for response in (at, high):
-            self.assertEqual(response.status_code, 200)
-            self.assertIn(b"points", response.content)
-            self.assertIn(b"polygons", response.content)
+        self.assertEqual(below, {"points": [self.facility.id]})
+        # From the threshold up: polygons only, each facility sent once (not also as a dot).
+        self.assertEqual(at, {"polygons": [self.facility.id]})
+        self.assertEqual(high, {"polygons": [self.facility.id]})
+
+    def test_polygon_features_carry_the_facility_details(self) -> None:
+        response = self._get_facility_tile(POLYGON_MIN_ZOOM)
+
+        self.assertIn(b"Tile Test Farm 1", response.content)
+        self.assertIn(b"capacity_mw", response.content)
+
+    def test_points_are_thinned_to_one_per_pixel_cell_keeping_the_largest(self) -> None:
+        # ~110 m from the first facility: the same ~1 px cell at zoom 0, so only one dot survives —
+        # the bigger facility. A third, far away, keeps its own dot.
+        near_but_bigger = self._make_facility(2, self.LON + 0.001, self.LAT, capacity_mw=80.0)
+        far_away = self._make_facility(3, -100.0, 40.0)
+
+        layers = decode_tile(self._get_tile(0, 0, 0).content)
+
+        self.assertCountEqual(layers["points"], [near_but_bigger.id, far_away.id])
+
+    def test_polygons_are_not_thinned(self) -> None:
+        neighbour = self._make_facility(2, self.LON + 0.001, self.LAT, capacity_mw=80.0)
+
+        layers = decode_tile(self._get_facility_tile(14).content)
+
+        self.assertCountEqual(layers["polygons"], [self.facility.id, neighbour.id])
 
     def test_valid_tile_without_facilities_returns_204(self) -> None:
         x, y = _tile_for(0.0, 0.0, 12)  # open ocean, nowhere near the test facility
