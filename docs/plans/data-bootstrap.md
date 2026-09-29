@@ -104,8 +104,8 @@ Linux expected; Windows via WSL 2, untested), so someone can read it cold and ru
   `.env` for ports), the data section (citation, refresh, loading a manually downloaded file —
   which must sit under `backend/`), the API, troubleshooting (Docker not running, ports,
   Task missing, old-volume collation error, offline download, empty map, OSM 403), workflow
-  pointers and licensing. It states the current large-payload limitation (#15) and that the
-  repo has no code license yet.
+  pointers and licensing. It states the current large-payload limitation (#15) and, at the
+  time, that the repo had no code license (an MIT license was added afterwards in #23).
 - `AGENTS.md` (Commands + layout) and `docs/requirements.md` (ingestion note) updated; the
   completed ingestion plan's "run against the real download" follow-up is marked done.
 - **Verified by following the README literally:** the "Without Task" commands from an empty
