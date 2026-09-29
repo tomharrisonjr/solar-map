@@ -73,6 +73,9 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
   `/api/facilities/` returns a full `FeatureCollection` for the map to render — the
   dataset is small (~thousands of rows) per `docs/requirements.md`, so this is simpler
   than teaching the frontend to page through `GeoJsonPagination`.
+  **Superseded:** the "small dataset" assumption was wrong for polygons — the real data is
+  6,611 facilities but ~25 MB as GeoJSON. The list is paginated again and the map uses vector
+  tiles; see `docs/plans/vector-tile-map.md`.
 - Add tests in `facilities/tests.py` covering: nearest ordering with a few seeded
   facilities, and missing/invalid `lat`/`lon` returning 400.
 
@@ -83,7 +86,8 @@ Researched the actual USPVDB schema (it's not in this repo) via the USGS site:
   GL JS from a CDN (`<script>`/`<link>` tags — no build step, no new dependency).
 - Inline (or a small static JS file under `facilities/static/facilities/map.js`) that:
   - Fetches `/api/facilities/`, renders panel-array polygons as a MapLibre GeoJSON
-    source/layer (centered on the continental US).
+    source/layer (centered on the continental US). *(Superseded: the map now loads vector
+    tiles from `/tiles/{z}/{x}/{y}.mvt` — see `docs/plans/vector-tile-map.md`.)*
   - On map click, calls `/api/facilities/nearest/?lat=..&lon=..&n=5`, highlights the
     returned facilities, and lists name/state/capacity/distance in a sidebar panel.
 - No new Python/JS package dependencies — MapLibre via CDN keeps this out of

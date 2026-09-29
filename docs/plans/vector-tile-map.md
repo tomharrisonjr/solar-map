@@ -2,7 +2,7 @@
 
 - GitHub Issue: #15
 - Date: 2026-09-29
-- Status: In Progress
+- Status: Complete
 
 ## Steps
 
@@ -10,7 +10,7 @@
 |--------|---|------|
 | ✅ Done | 1 | MVT tile endpoint (`/tiles/{z}/{x}/{y}.mvt`) |
 | ✅ Done | 2 | Map uses the vector source; restore list pagination |
-| ⬜ Pending | 3 | Measure, tune, wrap-up |
+| ✅ Done | 3 | Measure, tune, wrap-up |
 
 ## Context
 
@@ -44,7 +44,8 @@ plan makes easy to load.
 - Confirm a GiST index exists on `geom` (GeoDjango `spatial_index=True` default → check
   migration 0001) and record `EXPLAIN` showing an index scan.
 
-**As shipped:**
+**As shipped** *(the layer design below was revised in Step 3: layers became disjoint by zoom,
+dots are thinned and carry only the feature id — see Step 3)*:
 
 - `facilities/tiles.py` (static parameterized SQL, `is_valid_tile`, `build_tile`) and a
   `tile_view` in `facilities/views.py` (`@require_GET`, `@cache_control(public, max_age=3600)`),
@@ -124,7 +125,7 @@ plan makes easy to load.
   ≈ 0.43 MB, 0.21 MB gzipped, vs 24.8 MB (8.7 MB gzipped) — ~58× smaller; a 100 km view around
   Los Angeles (z8) ≈ 11 KB vs 24.8 MB.
 
-## Step 3 — Measure, tune, wrap-up
+## Step 3 — Measure, tune, wrap-up (#29)
 
 - Record with real data: tile size/time at z=3, 6, 9, 12; total initial bytes before/after;
   tune `POLYGON_MIN_ZOOM`, `maxzoom`, cache age.
@@ -132,6 +133,91 @@ plan makes easy to load.
   `AGENTS.md` conventions (tile endpoint, SQL parameterization), plan `Status: Complete`,
   update the ingestion plan's Step 2/3 notes to point here.
 - `task check` passes.
+- Carried over from Step 1: the whole-world tile was the outlier (438 KB); slim or thin the
+  low-zoom points.
+
+**As shipped:**
+
+*Method.* A script (run inside the web container via `manage.py shell`) enumerated **every**
+tile that contains a facility at zooms 3, 5–12 (7 to 4,165 tiles per zoom), built each with
+`build_tile`, and reported size and time percentiles; facility footprints were computed with
+`ST_Area(geom::geography)`; variants of the points layer were compared directly in PostGIS.
+
+*Footprints vs. screen pixels* (512 px tiles, lat 38; footprint area p10/p50/p90 =
+20,038 / 60,360 / 1,256,322 m², i.e. ~140 m / ~245 m / ~1.1 km across):
+
+| Zoom | m per px | p10 | median | p90 |
+| --- | --- | --- | --- | --- |
+| 7 | 482 | 0.3 px | 0.5 px | 2.3 px |
+| 8 | 241 | 0.6 px | 1.0 px | 4.7 px |
+| **9** | **121** | **1.2 px** | **2.0 px** | **9.3 px** |
+| 10 | 60 | 2.4 px | 4.1 px | 18.6 px |
+| 12 | 15 | 9.4 px | 16.3 px | 74.4 px |
+
+*Decisions.*
+
+- **`POLYGON_MIN_ZOOM = 9` — kept, now data-backed.** The median facility is 1 px at zoom 8
+  (sub-pixel for a third of them) and 2 px at zoom 9, where polygons start to read as shapes.
+  Zoom 10 would delay them to 4 px for no real saving.
+- **Layers made disjoint by zoom.** Below zoom 9 only `points`, from 9 only `polygons`. The
+  tiles used to carry both, but the map hides the dots from zoom 9, so they were pure waste:
+  in a dense z9 tile (LA, 44 facilities) the points layer was 2,965 B next to 5,923 B of polygons.
+- **Points carry only the feature id** (`ST_AsMVT(..., 'geom', 'id')` makes `id` the native MVT
+  feature id, not a key/value property). The map reads no other point property, and details are
+  one `/api/facilities/<id>/` call away. World tile: 437,886 B (6 properties) → 159,544 B
+  (`id` + capacity) → 138,597 B (`id`) → 72,738 B (geometry only).
+- **Dots thinned to at most one per 8×8 grid cell** (~1 screen pixel at 512 px tiles; the
+  largest facility wins the cell; `POINT_CELL = 8`). At zoom 0 this collapses 6,611 dots to
+  958 — visually near-identical, since dots are 3 px wide — and the world tile to **13,416 B**
+  (from 437,886 B; a 16-unit grid in the experiment gave ~406 dots / ~8 KB but drops more
+  than a pixel's worth of detail). It only bites where dots genuinely overlap, so no
+  per-zoom threshold is needed. Trade-off: in the densest areas one dot can now stand for
+  several facilities at low zoom.
+- **`maxzoom = 14` — kept.** A z14 tile spans ~2.4 km on a 4096 grid (~0.6 m/unit), far finer than
+  panel-array detail; higher map zooms overzoom the z14 tiles.
+- **`Cache-Control: public, max-age=3600` — kept.** Tiles cost 0.1–7 ms to build, so caching
+  isn't needed for server load; a longer max-age would just keep serving stale tiles for hours
+  after `task data:load` refreshes the data (URLs aren't versioned). One hour is the compromise.
+
+*Results — every tile with a facility, before → after* (plain bytes; p50 / p95 / max per tile;
+total across all tiles at that zoom):
+
+| Zoom | Tiles | p50 B | p95 B | max B | total KB |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 7 | 51,981 → **6,272** | 117,608 → **15,803** | 146,237 → **20,502** | 426 → **57** |
+| 5 | 20 | 9,180 → 1,789 | 72,784 → 13,249 | 95,461 → 17,304 | 429 → 78 |
+| 6 | 52 | 3,214 → 652 | 34,188 → 7,177 | 52,369 → 10,266 | 433 → 84 |
+| 7 | 152 | 976 → 191 | 11,618 → 2,254 | 42,693 → 8,782 | 444 → 89 |
+| 8 | 408 | 428 → 85 | 5,235 → 1,150 | 16,034 → 3,330 | 469 → 95 |
+| 9 | 954 | 962 → 652 | 7,056 → 5,218 | 26,922 → 18,037 | 1,921 → 1,372 |
+| 10 | 1,841 | 761 → 495 | 4,086 → 3,196 | 18,259 → 13,196 | 2,291 → 1,663 |
+| 11 | 2,995 | 592 → 382 | 2,545 → 2,021 | 7,189 → 6,948 | 2,568 → 1,840 |
+| 12 | 4,165 | 504 → 315 | 1,642 → 1,351 | 5,448 → 5,294 | 2,765 → 1,939 |
+
+Build time per tile: median 0.1–1.5 ms, worst 7.8 ms, at every zoom.
+
+*First-load transfer, real data* (default US view = 4 tiles at z3; 100 km view around Los
+Angeles = 4 tiles at z8):
+
+| View | Original list | Step 2 (tiles) | Step 3 (tuned) |
+| --- | --- | --- | --- |
+| Default US view | 24,797,178 B (8.7 MB gzipped) | 430,662 B (205,984 gz) | **57,765 B (28,187 gz)** |
+| 100 km around LA | 24,797,178 B | 11,199 B (6,984 gz) | **2,229 B (1,647 gz)** |
+
+That is ~430× smaller than the original list for the default view and ~11,000× for a local one.
+
+*Code and docs.* `tiles.py` rewritten (two static SQL statements, `POINT_CELL`, feature-id
+argument); the tile tests now decode the tile with a ~25-line protobuf reader in `tests.py`
+(no dependency) and assert exact layers and feature ids — including that the larger of two
+nearby facilities wins a thinned dot and that polygons are never thinned (32 tests).
+README (API table), `docs/requirements.md` (features, layout, stack, the "small dataset" claim
+corrected: small in rows, ~25 MB in polygons), `AGENTS.md` (layout + a vector-tile
+convention) and the ingestion plan (Step 2/3 marked superseded) updated. `task check` passes.
+
+*Open.* Not verified in a real browser: the dots-to-polygons handoff at zoom 9 and how thinned
+dots look in dense areas. Possible later work: click a dot/polygon for details via the feature
+id, tile caching (CDN / pre-generated), and versioned tile URLs so a data refresh can bust
+cached tiles instead of waiting out `max-age`.
 
 ## Verification
 
