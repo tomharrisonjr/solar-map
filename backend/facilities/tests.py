@@ -13,6 +13,7 @@ from django.contrib.staticfiles import finders
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
+from django.urls import reverse
 
 from facilities.management.commands.load_uspvdb import (
     DEFAULT_SOURCE,
@@ -21,6 +22,7 @@ from facilities.management.commands.load_uspvdb import (
 )
 from facilities.models import SolarFacility
 from facilities.tiles import MAX_ZOOM, MVT_CONTENT_TYPE, POLYGON_MIN_ZOOM, is_valid_tile
+from facilities.views import FacilityPagination
 
 
 class SolarFacilityModelTests(TestCase):
@@ -93,12 +95,34 @@ class NearestFacilityApiTests(TestCase):
             with self.subTest(params=params):
                 self.assertEqual(self.client.get(self.url, params).status_code, 400)
 
-    def test_list_returns_unpaginated_feature_collection(self) -> None:
-        response = self.client.get("/api/facilities/")
+    def test_list_is_a_paginated_feature_collection(self) -> None:
+        body = self.client.get("/api/facilities/").json()
 
-        body = response.json()
+        # Still valid GeoJSON, plus paging info; everything fits on one default page here.
         self.assertEqual(body["type"], "FeatureCollection")
+        self.assertEqual(body["count"], 3)
         self.assertEqual(len(body["features"]), 3)
+        self.assertIsNone(body["next"])
+
+    def test_list_pages_with_page_size(self) -> None:
+        first = self.client.get("/api/facilities/", {"page_size": 2}).json()
+        second = self.client.get("/api/facilities/", {"page_size": 2, "page": 2}).json()
+
+        self.assertEqual(first["count"], 3)
+        self.assertEqual(len(first["features"]), 2)
+        self.assertIsNotNone(first["next"])
+        self.assertEqual(len(second["features"]), 1)
+        self.assertIsNone(second["next"])
+        ids = [f["id"] for f in first["features"] + second["features"]]
+        self.assertEqual(ids, sorted(ids))  # stable order, no repeats
+        self.assertEqual(len(set(ids)), 3)
+
+    def test_list_page_size_is_capped(self) -> None:
+        body = self.client.get("/api/facilities/", {"page_size": 100000}).json()
+
+        # max_page_size caps it; the 3 test rows still all fit.
+        self.assertEqual(len(body["features"]), 3)
+        self.assertLessEqual(len(body["features"]), FacilityPagination.max_page_size)
 
 
 class LoadUspvdbCommandTests(TestCase):
@@ -255,6 +279,24 @@ class MapViewTests(TestCase):
         self.assertTemplateUsed(response, "facilities/map.html")
         self.assertContains(response, 'id="map"')
         self.assertContains(response, "/static/facilities/map.js")
+
+    def test_page_loads_facilities_as_vector_tiles_not_the_full_list(self) -> None:
+        response = self.client.get("/")
+
+        # The tile path written into the page must be the route the server actually serves.
+        self.assertContains(response, 'tilesPath: "/tiles/{z}/{x}/{y}.mvt"')
+        self.assertEqual(reverse("tile", args=(3, 4, 5)), "/tiles/3/4/5.mvt")
+        # ...and the map must no longer be told to fetch every facility up front.
+        self.assertNotContains(response, "facilitiesUrl")
+
+    def test_page_polygon_min_zoom_comes_from_the_server_constant(self) -> None:
+        response = self.client.get("/")
+
+        self.assertEqual(response.context["polygon_min_zoom"], POLYGON_MIN_ZOOM)
+        self.assertContains(response, f"polygonMinZoom: {POLYGON_MIN_ZOOM},")
+
+    def test_page_configures_the_initial_user_radius(self) -> None:
+        self.assertContains(self.client.get("/"), "userRadiusKm: 100,")
 
     def test_page_does_not_suppress_referer_for_osm_tiles(self) -> None:
         # OSM's tile usage policy requires browsers to send a valid Referer; Django's default

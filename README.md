@@ -44,8 +44,12 @@ task setup            # one time: config file, build the image, create the DB, d
 docker compose up     # start the database and the web app
 ```
 
-Then open **<http://localhost:8000/>** and click anywhere on the map: the five nearest solar
-facilities are highlighted and listed in the sidebar with their distance.
+Then open **<http://localhost:8000/>**. If your browser offers to share your location and you
+allow it, the map opens zoomed to a 100 km radius around you (your location stays in your
+browser; it is only sent to the server if you click the map). Otherwise it shows the whole US.
+Click anywhere on the map: the five nearest solar facilities are highlighted and listed in the
+sidebar with their distance. Facilities load as vector tiles, so only what's in view is
+downloaded — dots when zoomed out, real panel-array polygons from zoom 9.
 
 `task setup` takes a few minutes the first time (mostly building the Docker image). It:
 
@@ -55,10 +59,6 @@ facilities are highlighted and listed in the sidebar with their distance.
 4. downloads the official USPVDB release from USGS and loads it (~6,600 facilities, a few seconds).
 
 It's safe to run again: nothing is duplicated and your `.env` is never overwritten.
-
-> **Known limitation:** the map currently downloads every facility's polygon on page load
-> (about 25 MB), so the first load can take several seconds. This is being replaced by vector
-> tiles ([#15](https://github.com/tomharrisonjr/solar-map/issues/15)).
 
 ## Everyday commands
 
@@ -130,7 +130,8 @@ memory and upserts the facilities by their stable `case_id`.
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /api/facilities/` | Every facility as a GeoJSON `FeatureCollection` (large — see the known limitation above) |
+| `GET /api/facilities/` | Facilities as a paged GeoJSON `FeatureCollection` (100 per page; `?page=<n>`, `?page_size=<n>` up to 1000) with `count`, `next` and `previous` alongside `features`. The full set is ~25 MB, so page through it. |
+| `GET /tiles/<z>/<x>/<y>.mvt` | A [Mapbox Vector Tile](https://github.com/mapbox/vector-tile-spec) of the facilities in that map tile: layer `points` (centroids) at every zoom, plus layer `polygons` from zoom 9. `204` if the tile is empty, `404` for invalid coordinates. This is what the map uses. |
 | `GET /api/facilities/nearest/?lat=<lat>&lon=<lon>&n=<count>` | The `n` closest facilities (default 5, max 25) to a point, nearest first, each with a `distance_m` property in metres. Invalid input returns `400`. |
 | `GET /admin/` | Django admin (after creating a superuser) |
 
@@ -146,6 +147,7 @@ Example: `curl "http://localhost:8000/api/facilities/nearest/?lat=34.05&lon=-118
 | `template database "template1" has a collation version mismatch` | You have a database volume from an older checkout that used a different Postgres image. It's disposable: `docker compose down -v`, then `task setup`. |
 | `Could not download …` from `task setup` / `task data:load` | No internet, or USGS is unreachable. Download the zip from the [data page](https://eerscmap.usgs.gov/uspvdb/data/), put it in `backend/`, and run `task data:load -- uspvdbGeoJSON.zip`. |
 | The map loads but shows no solar facilities | The data isn't loaded: run `task data:load`. |
+| The map doesn't zoom to my location | Allow location access when the browser asks (and check the site isn't blocked in the browser's settings). Browsers only offer location on `https://` or `http://localhost`, so it won't work if you reach the app by another address, e.g. `http://192.168.x.x:8000`. Locations outside the US are ignored, since the data only covers the US. |
 | Map tiles show `403 Access Blocked` | OpenStreetMap's public tile server blocked the request. It requires the browser to send a `Referer` header (the app is configured to allow this); browser privacy extensions that strip it can trigger the block. The public server is best-effort — see [OpenStreetMap's tile usage policy](https://operations.osmfoundation.org/policies/tiles/). |
 
 ## Contributing / project workflow

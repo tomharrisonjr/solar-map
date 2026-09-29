@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.geos import Point
 from django.db.models import QuerySet
@@ -12,10 +14,11 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import ReadOnlyModelViewSet
+from rest_framework_gis.pagination import GeoJsonPagination
 
 from facilities.models import SolarFacility
 from facilities.serializers import NearestFacilitySerializer, SolarFacilitySerializer
-from facilities.tiles import MVT_CONTENT_TYPE, build_tile, is_valid_tile
+from facilities.tiles import MVT_CONTENT_TYPE, POLYGON_MIN_ZOOM, build_tile, is_valid_tile
 
 DEFAULT_NEAREST_COUNT = 5
 MAX_NEAREST_COUNT = 25
@@ -36,9 +39,20 @@ def _parse_param(params, name: str, cast, low, high):
 
 
 class MapView(TemplateView):
-    """Server-rendered page hosting the MapLibre map; all data comes from /api/facilities/."""
+    """Server-rendered page hosting the MapLibre map.
+
+    Facilities arrive as vector tiles from /tiles/{z}/{x}/{y}.mvt; only the click-to-find-nearest
+    results come from /api/facilities/nearest/.
+    """
 
     template_name: str = "facilities/map.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        # One source of truth: the zoom at which tiles start to include polygons is also the
+        # zoom at which the map switches from centroid points to polygon layers.
+        context["polygon_min_zoom"] = POLYGON_MIN_ZOOM
+        return context
 
 
 @require_GET
@@ -57,12 +71,20 @@ def tile_view(request: HttpRequest, z: int, x: int, y: int) -> HttpResponse:
     return HttpResponse(content, content_type=MVT_CONTENT_TYPE)
 
 
+class FacilityPagination(GeoJsonPagination):
+    """Paged GeoJSON: still a FeatureCollection, plus `count`, `next` and `previous`."""
+
+    page_size: int = 100
+    page_size_query_param: str = "page_size"
+    max_page_size: int = 1000
+
+
 class SolarFacilityViewSet(ReadOnlyModelViewSet):
-    queryset: QuerySet[SolarFacility] = SolarFacility.objects.all()
+    # Ordered so pages are stable. The map no longer reads this list (it uses vector tiles); the
+    # full ~6,600-polygon list was ~25 MB, which is why it is paginated.
+    queryset: QuerySet[SolarFacility] = SolarFacility.objects.order_by("id")
     serializer_class: type[SolarFacilitySerializer] = SolarFacilitySerializer
-    # The dataset is small (~thousands of rows), so return one full FeatureCollection for
-    # the map instead of paging.
-    pagination_class = None
+    pagination_class: type[FacilityPagination] = FacilityPagination
 
     @action(detail=False, methods=["get"])
     def nearest(self, request: Request) -> Response:

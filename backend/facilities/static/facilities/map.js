@@ -6,6 +6,13 @@
   const resultsEl = document.getElementById("results");
   const emptyCollection = { type: "FeatureCollection", features: [] };
 
+  const DEFAULT_STATUS = "Click the map to find the nearest solar facilities.";
+  const KM_PER_DEGREE = 111.32; // length of one degree of latitude
+  // Rough bounds of the USPVDB coverage (US states + territories; the Aleutians cross 180°).
+  const US_LAT = [17, 72];
+  const US_LNG_WEST_OF = -64;
+  const US_LNG_EAST_OF = 172;
+
   // Basemap: OpenStreetMap's public tile server, used per its tile usage policy
   // (https://operations.osmfoundation.org/policies/tiles/): standard HTTPS host, only tiles
   // in view are requested, browser HTTP caching is left intact, the page must not suppress
@@ -30,7 +37,7 @@
     },
     // compact: false keeps attribution expanded; the policy forbids hiding it behind a toggle.
     attributionControl: { compact: false },
-    center: [-98.5, 39.8], // continental US
+    center: [-98.5, 39.8], // continental US (used unless the browser shares a location)
     zoom: 3.5,
   });
   map.addControl(new maplibregl.NavigationControl(), "top-right");
@@ -63,8 +70,10 @@
   }
 
   let latestRequest = 0;
+  let userHasClicked = false;
 
   async function showNearest(lngLat) {
+    userHasClicked = true;
     const requestId = ++latestRequest;
     statusEl.textContent = "Finding nearest facilities…";
 
@@ -105,37 +114,98 @@
     }
   }
 
-  async function loadFacilities() {
-    try {
-      const response = await fetch(config.facilitiesUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      map.getSource("facilities").setData(data);
-      statusEl.textContent = data.features.length
-        ? `${data.features.length} facilities loaded. Click the map to find the nearest.`
-        : "No facilities in the database yet — run load_uspvdb first.";
-    } catch (err) {
-      statusEl.textContent = `Could not load facilities (${err.message}).`;
-    }
+  // Bounding box of a circle of `radiusKm` around a point (a square 2 × radius across, so the
+  // whole circle fits when the map fits this box).
+  function radiusBounds(lng, lat, radiusKm) {
+    const dLat = radiusKm / KM_PER_DEGREE;
+    // A degree of longitude shrinks with latitude; clamp so we never divide by ~0 near the poles.
+    const dLng = radiusKm / (KM_PER_DEGREE * Math.max(Math.cos((lat * Math.PI) / 180), 0.05));
+    return [
+      [lng - dLng, lat - dLat],
+      [lng + dLng, lat + dLat],
+    ];
+  }
+
+  function inUsCoverage(lng, lat) {
+    return lat >= US_LAT[0] && lat <= US_LAT[1] && (lng <= US_LNG_WEST_OF || lng >= US_LNG_EAST_OF);
+  }
+
+  // If the browser shares its location, zoom to `userRadiusKm` around it. This happens entirely in
+  // the browser (geolocation needs HTTPS or localhost); the position is not sent anywhere unless
+  // the user clicks the map. Falls back to the whole-US view when unavailable, denied or outside
+  // the dataset's coverage.
+  function locateUser() {
+    if (!("geolocation" in navigator)) return;
+    statusEl.textContent = "Locating you…";
+
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const { longitude: lng, latitude: lat } = coords;
+        if (!inUsCoverage(lng, lat)) {
+          statusEl.textContent = `You appear to be outside the US, which is all the data covers. ${DEFAULT_STATUS}`;
+          return;
+        }
+        map.getSource("user-location").setData({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "Point", coordinates: [lng, lat] },
+        });
+        if (userHasClicked) return; // don't yank the view away from what they're already doing
+        map.fitBounds(radiusBounds(lng, lat, config.userRadiusKm), { padding: 20, animate: false });
+        statusEl.textContent = `Showing ${config.userRadiusKm} km around you. ${DEFAULT_STATUS}`;
+      },
+      (err) => {
+        const reason = err.code === 1 ? "location permission denied" : "location unavailable";
+        statusEl.textContent = `Showing the whole US (${reason}). ${DEFAULT_STATUS}`;
+      },
+      { timeout: 8000, maximumAge: 5 * 60 * 1000 },
+    );
   }
 
   map.on("load", () => {
-    map.addSource("facilities", { type: "geojson", data: emptyCollection });
+    // Facilities come as vector tiles. Absolute URL built by concatenation: MapLibre substitutes
+    // the literal {z}/{x}/{y}, and `new URL()` would percent-encode the braces. Vector sources
+    // default to 512 px tiles, so the tile zoom equals floor(map zoom) — which is why the server's
+    // POLYGON_MIN_ZOOM lines up with the layer minzoom below.
+    map.addSource("facilities", {
+      type: "vector",
+      tiles: [window.location.origin + config.tilesPath],
+      maxzoom: config.tilesMaxZoom,
+    });
     map.addSource("nearest", { type: "geojson", data: emptyCollection });
     map.addSource("nearest-points", { type: "geojson", data: emptyCollection });
     map.addSource("query-point", { type: "geojson", data: emptyCollection });
+    map.addSource("user-location", { type: "geojson", data: emptyCollection });
 
+    // Zoomed out: one dot per facility (panel arrays are smaller than a pixel).
+    map.addLayer({
+      id: "facilities-points",
+      type: "circle",
+      source: "facilities",
+      "source-layer": "points",
+      maxzoom: config.polygonMinZoom,
+      paint: {
+        "circle-radius": 3,
+        "circle-color": "#f5a623",
+        "circle-stroke-color": "#b36b00",
+        "circle-stroke-width": 0.5,
+      },
+    });
+    // Zoomed in: the real panel-array polygons.
     map.addLayer({
       id: "facilities-fill",
       type: "fill",
       source: "facilities",
+      "source-layer": "polygons",
+      minzoom: config.polygonMinZoom,
       paint: { "fill-color": "#f5a623", "fill-opacity": 0.5 },
     });
-    // Panel arrays are tiny at country zoom; the outline keeps them visible as specks.
     map.addLayer({
       id: "facilities-outline",
       type: "line",
       source: "facilities",
+      "source-layer": "polygons",
+      minzoom: config.polygonMinZoom,
       paint: { "line-color": "#b36b00", "line-width": 1.5 },
     });
     map.addLayer({
@@ -172,9 +242,20 @@
         "circle-stroke-width": 2,
       },
     });
+    map.addLayer({
+      id: "user-location",
+      type: "circle",
+      source: "user-location",
+      paint: {
+        "circle-radius": 7,
+        "circle-color": "#2e7d32",
+        "circle-stroke-color": "#fff",
+        "circle-stroke-width": 2,
+      },
+    });
 
     map.on("click", (e) => showNearest(e.lngLat));
     map.getCanvas().style.cursor = "crosshair";
-    loadFacilities();
+    locateUser();
   });
 })();
