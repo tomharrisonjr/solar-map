@@ -1,0 +1,3 @@
+# Plan docs use the compact table style from the CLAUDE.md template; Prettier's
+# column-aligned tables create whitespace-only diffs (and MD060 warnings).
+docs/plans/

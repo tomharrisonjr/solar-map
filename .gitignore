@@ -19,7 +19,7 @@ backend/media/
 .idea/
 .DS_Store
 
-# Claude Code worktrees (ephemeral, created by /start-step)
+# Legacy Claude Code worktrees (new ones live in ../solar-map.worktrees/, see `task wt:new`)
 .claude/worktrees/
 
 # ruff
