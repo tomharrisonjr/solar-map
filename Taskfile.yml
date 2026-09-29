@@ -1,0 +1,94 @@
+version: "3"
+
+# Deterministic dev workflow, runnable by a human, CI, or any coding agent.
+# Django always runs inside Docker Compose (GDAL/GEOS live in the `web` image).
+
+vars:
+  # The primary checkout, even when invoked from inside a worktree.
+  MAIN_DIR:
+    sh: dirname "$(git rev-parse --path-format=absolute --git-common-dir)"
+  # Worktrees live in a sibling folder: ../solar-map.worktrees/<branch-slug>/
+  WT_ROOT: "{{.MAIN_DIR}}.worktrees"
+  # Base ref for new branches; override with `BASE=some-branch task wt:new -- ...`.
+  BASE: '{{default "main" .BASE}}'
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  lint:
+    desc: Run ruff
+    cmds:
+      - docker compose run --rm web ruff check .
+
+  test:
+    desc: Run the Django test suite
+    cmds:
+      - docker compose run --rm web python manage.py test
+
+  check:
+    desc: Lint + tests — the gate before calling a change done
+    cmds:
+      - task: lint
+      - task: test
+
+  migrate:
+    desc: Apply database migrations
+    cmds:
+      - docker compose up -d --wait db
+      - docker compose run --rm web python manage.py migrate
+
+  wt:list:
+    desc: List git worktrees
+    cmds:
+      - git worktree list
+
+  wt:new:
+    desc: "Create a worktree + branch: task wt:new -- <type>/gh-<n>-<desc>"
+    preconditions:
+      - sh: test -n "{{.CLI_ARGS}}"
+        msg: "usage: task wt:new -- <type>/gh-<n>-<desc>   (e.g. feature/gh-5-nearest-api)"
+    cmds:
+      - |
+        branch="{{.CLI_ARGS}}"
+        slug="$(echo "$branch" | tr '/' '-')"
+        path="{{.WT_ROOT}}/$slug"
+
+        git worktree add -b "$branch" "$path" "{{.BASE}}"
+
+        # backend/.env is gitignored: share the primary checkout's copy via symlink so
+        # there is one source of truth (seed it from .env.example if it doesn't exist).
+        if [ ! -e "{{.MAIN_DIR}}/backend/.env" ]; then
+          cp "{{.MAIN_DIR}}/backend/.env.example" "{{.MAIN_DIR}}/backend/.env"
+        fi
+        ln -s "{{.MAIN_DIR}}/backend/.env" "$path/backend/.env"
+
+        # Free host ports so this worktree's compose stack can run beside others.
+        free_port() {
+          python3 -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1])"
+        }
+        printf 'DB_PORT=%s\nWEB_PORT=%s\n' "$(free_port)" "$(free_port)" > "$path/.env"
+
+        echo
+        echo "Worktree ready: $path"
+        echo "Branch:         $branch (from {{.BASE}})"
+        echo "Ports:          $(tr '\n' ' ' < "$path/.env")"
+
+  wt:rm:
+    desc: "Remove a worktree, its compose stack/volume, and its merged branch: task wt:rm -- <branch>"
+    preconditions:
+      - sh: test -n "{{.CLI_ARGS}}"
+        msg: "usage: task wt:rm -- <type>/gh-<n>-<desc>"
+    cmds:
+      - |
+        branch="{{.CLI_ARGS}}"
+        slug="$(echo "$branch" | tr '/' '-')"
+        path="{{.WT_ROOT}}/$slug"
+
+        (cd "$path" && docker compose down -v)
+        rm -f "$path/backend/.env" "$path/.env"
+        git worktree remove "$path"
+        # -d refuses to delete a branch that hasn't been merged.
+        git branch -d "$branch"
