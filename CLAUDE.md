@@ -122,7 +122,7 @@ work.
   for readability, not enforced — but keep it consistent with the existing `facilities`
   files.
 - **PostGIS extension**: a fresh DB needs `CREATE EXTENSION postgis;` before the first
-  migration. The `postgis/postgis` Docker image used by `docker-compose.yml` does this
+  migration. The `imresamu/postgis` (multi-arch, so it runs natively on Apple Silicon) Docker image used by `docker-compose.yml` does this
   automatically for local dev. On AWS RDS (or any managed Postgres for prod), it must be
   run manually before the first `migrate` — see `docs/requirements.md` under Known Risks.
 - **GDAL/GEOS friction**: if `manage.py migrate` or `LayerMapping` import fails with

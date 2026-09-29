@@ -76,7 +76,7 @@ skillset and could be a v2 direction once the core app works.
 
 ```
 solar-map/
-├── docker-compose.yml          # postgis/postgis image for local dev
+├── docker-compose.yml          # imresamu/postgis (multi-arch) image for local dev
 ├── Dockerfile
 ├── backend/
 │   ├── manage.py
@@ -96,7 +96,7 @@ solar-map/
 
 ### Stack
 
-- **Backend**: Python, Django, GeoDjango, PostGIS (via `postgis/postgis` Docker image
+- **Backend**: Python, Django, GeoDjango, PostGIS (via `imresamu/postgis` Docker image (multi-arch; the official `postgis/postgis` is amd64-only)
   locally; AWS RDS for Postgres with the PostGIS extension enabled in production).
 - **API**: Django REST Framework + `djangorestframework-gis` for GeoJSON serialization.
 - **Frontend**: optional Next.js app using MapLibre/Mapbox GL, consuming the GeoJSON API.
@@ -143,7 +143,7 @@ SolarFacility.objects.annotate(distance=Distance("centroid", pt)).order_by("dist
   If `manage.py migrate` or `LayerMapping` import fails with missing library errors,
   check `GDAL_LIBRARY_PATH` / `GEOS_LIBRARY_PATH` in Django settings first, and verify the
   Docker base image includes the GDAL/GEOS system packages.
-- **Local vs. RDS parity**: use the `postgis/postgis` Docker image locally (not plain
+- **Local vs. RDS parity**: use the `imresamu/postgis` Docker image (multi-arch; the official `postgis/postgis` is amd64-only) locally (not plain
   `postgres`) so the extension is available from the start; remember to run
   `CREATE EXTENSION postgis;` on the RDS instance before first migration.
 - Dataset licensing/attribution: confirm USPVDB and any paired datasets (GFW, WDPA) usage
