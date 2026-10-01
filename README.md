@@ -1,5 +1,7 @@
 # Solar Map
 
+![Solar Map screenshot](docs/images/solar-map.png)
+
 A small learning project for PostGIS and GeoDjango. It loads the
 [USPVDB](https://eerscmap.usgs.gov/uspvdb/) (USGS/LBNL United States Large-Scale Solar
 Photovoltaic Database) — 6,600+ ground-mounted solar facilities with their panel-array
@@ -17,11 +19,11 @@ under the [MIT License](LICENSE) (code only — see [Licensing](#acknowledgement
 
 Install these first. Each row says how to check that it's installed.
 
-| Tool | What it's for | Install | Check | Tested with |
-| --- | --- | --- | --- | --- |
-| **Docker** with **Compose v2** | Runs the database and the Django app | [Docker Desktop](https://docs.docker.com/get-docker/) (macOS, Windows) or [Docker Engine](https://docs.docker.com/engine/install/) + the [Compose plugin](https://docs.docker.com/compose/install/) (Linux) | `docker compose version` | Docker 29.8, Compose v5.5 |
-| **Task** (go-task) | Runs the project's commands (`task setup`, `task check`, …) | [taskfile.dev/installation](https://taskfile.dev/installation/) — e.g. `brew install go-task` on macOS | `task --version` | Task 3.52 |
-| **Git** 2.31 or newer | Cloning the repo; the Taskfile also uses it | [git-scm.com/downloads](https://git-scm.com/downloads) | `git --version` | Git 2.50 |
+| Tool                           | What it's for                                               | Install                                                                                                                                                                                                     | Check                    | Tested with               |
+| ------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------- |
+| **Docker** with **Compose v2** | Runs the database and the Django app                        | [Docker Desktop](https://docs.docker.com/get-docker/) (macOS, Windows) or [Docker Engine](https://docs.docker.com/engine/install/) + the [Compose plugin](https://docs.docker.com/compose/install/) (Linux) | `docker compose version` | Docker 29.8, Compose v5.5 |
+| **Task** (go-task)             | Runs the project's commands (`task setup`, `task check`, …) | [taskfile.dev/installation](https://taskfile.dev/installation/) — e.g. `brew install go-task` on macOS                                                                                                      | `task --version`         | Task 3.52                 |
+| **Git** 2.31 or newer          | Cloning the repo; the Taskfile also uses it                 | [git-scm.com/downloads](https://git-scm.com/downloads)                                                                                                                                                      | `git --version`          | Git 2.50                  |
 
 Also needed:
 
@@ -64,17 +66,17 @@ It's safe to run again: nothing is duplicated and your `.env` is never overwritt
 
 Run `task --list` to see them all.
 
-| Command | What it does |
-| --- | --- |
-| `task setup` | First-time setup (see above) |
-| `docker compose up` | Run the app at <http://localhost:8000/> (add `-d` to run in the background; `docker compose down` stops it) |
-| `task check` | Lint (ruff) + run the tests — run this before calling a change done |
-| `task lint` / `task test` | Just one half of `task check` |
-| `task migrate` | Start the database and apply migrations |
-| `task data:load` | Download and (re)load the USPVDB dataset — use this to refresh the data |
-| `task env` | Create `backend/.env` from the example if missing (also done by `task setup`) |
-| `docker compose run --rm web python manage.py createsuperuser` | Create an admin user for <http://localhost:8000/admin/> |
-| `docker compose down -v` | Stop everything **and delete the database** (start over with `task setup`) |
+| Command                                                        | What it does                                                                                                |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `task setup`                                                   | First-time setup (see above)                                                                                |
+| `docker compose up`                                            | Run the app at <http://localhost:8000/> (add `-d` to run in the background; `docker compose down` stops it) |
+| `task check`                                                   | Lint (ruff) + run the tests — run this before calling a change done                                         |
+| `task lint` / `task test`                                      | Just one half of `task check`                                                                               |
+| `task migrate`                                                 | Start the database and apply migrations                                                                     |
+| `task data:load`                                               | Download and (re)load the USPVDB dataset — use this to refresh the data                                     |
+| `task env`                                                     | Create `backend/.env` from the example if missing (also done by `task setup`)                               |
+| `docker compose run --rm web python manage.py createsuperuser` | Create an admin user for <http://localhost:8000/admin/>                                                     |
+| `docker compose down -v`                                       | Stop everything **and delete the database** (start over with `task setup`)                                  |
 
 ### Without Task
 
@@ -128,27 +130,27 @@ memory and upserts the facilities by their stable `case_id`.
 
 ## API
 
-| Endpoint | Returns |
-| --- | --- |
-| `GET /api/facilities/` | Facilities as a paged GeoJSON `FeatureCollection` (100 per page; `?page=<n>`, `?page_size=<n>` up to 1000) with `count`, `next` and `previous` alongside `features`. The full set is ~25 MB, so page through it. |
-| `GET /tiles/<z>/<x>/<y>.mvt` | A [Mapbox Vector Tile](https://github.com/mapbox/vector-tile-spec) of the facilities in that map tile. Below zoom 9 it has a `points` layer (one dot per facility, thinned to about one per screen pixel, carrying just the feature `id`); from zoom 9 up it has a `polygons` layer (the real panel-array shapes with `name`, `state`, `capacity_mw`, …). `204` if the tile is empty, `404` for invalid coordinates. This is what the map uses: the default US view downloads about 57 KB instead of 25 MB. |
-| `GET /api/facilities/nearest/?lat=<lat>&lon=<lon>&n=<count>` | The `n` closest facilities (default 5, max 25) to a point, nearest first, each with a `distance_m` property in metres. Invalid input returns `400`. |
-| `GET /admin/` | Django admin (after creating a superuser) |
+| Endpoint                                                     | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/facilities/`                                       | Facilities as a paged GeoJSON `FeatureCollection` (100 per page; `?page=<n>`, `?page_size=<n>` up to 1000) with `count`, `next` and `previous` alongside `features`. The full set is ~25 MB, so page through it.                                                                                                                                                                                                                                                                                            |
+| `GET /tiles/<z>/<x>/<y>.mvt`                                 | A [Mapbox Vector Tile](https://github.com/mapbox/vector-tile-spec) of the facilities in that map tile. Below zoom 9 it has a `points` layer (one dot per facility, thinned to about one per screen pixel, carrying just the feature `id`); from zoom 9 up it has a `polygons` layer (the real panel-array shapes with `name`, `state`, `capacity_mw`, …). `204` if the tile is empty, `404` for invalid coordinates. This is what the map uses: the default US view downloads about 57 KB instead of 25 MB. |
+| `GET /api/facilities/nearest/?lat=<lat>&lon=<lon>&n=<count>` | The `n` closest facilities (default 5, max 25) to a point, nearest first, each with a `distance_m` property in metres. Invalid input returns `400`.                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /admin/`                                                | Django admin (after creating a superuser)                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 Example: `curl "http://localhost:8000/api/facilities/nearest/?lat=34.05&lon=-118.24&n=3"`
 
 ## Troubleshooting
 
-| Symptom | Fix |
-| --- | --- |
-| `Cannot connect to the Docker daemon` | Start Docker Desktop (or the Docker service), then retry. |
-| `port is already allocated` / `address already in use` | Something else is using `5432` or `8000`. Stop it, or set `DB_PORT` / `WEB_PORT` in a root `.env` (see [Configuration](#configuration)). |
-| `task: command not found` | Install Task ([taskfile.dev/installation](https://taskfile.dev/installation/)) or use the [equivalent Docker commands](#without-task). |
-| `template database "template1" has a collation version mismatch` | You have a database volume from an older checkout that used a different Postgres image. It's disposable: `docker compose down -v`, then `task setup`. |
-| `Could not download …` from `task setup` / `task data:load` | No internet, or USGS is unreachable. Download the zip from the [data page](https://eerscmap.usgs.gov/uspvdb/data/), put it in `backend/`, and run `task data:load -- uspvdbGeoJSON.zip`. |
-| The map loads but shows no solar facilities | The data isn't loaded: run `task data:load`. |
-| The map doesn't zoom to my location | Allow location access when the browser asks (and check the site isn't blocked in the browser's settings). Browsers only offer location on `https://` or `http://localhost`, so it won't work if you reach the app by another address, e.g. `http://192.168.x.x:8000`. Locations outside the US are ignored, since the data only covers the US. |
-| Map tiles show `403 Access Blocked` | OpenStreetMap's public tile server blocked the request. It requires the browser to send a `Referer` header (the app is configured to allow this); browser privacy extensions that strip it can trigger the block. The public server is best-effort — see [OpenStreetMap's tile usage policy](https://operations.osmfoundation.org/policies/tiles/). |
+| Symptom                                                          | Fix                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cannot connect to the Docker daemon`                            | Start Docker Desktop (or the Docker service), then retry.                                                                                                                                                                                                                                                                                           |
+| `port is already allocated` / `address already in use`           | Something else is using `5432` or `8000`. Stop it, or set `DB_PORT` / `WEB_PORT` in a root `.env` (see [Configuration](#configuration)).                                                                                                                                                                                                            |
+| `task: command not found`                                        | Install Task ([taskfile.dev/installation](https://taskfile.dev/installation/)) or use the [equivalent Docker commands](#without-task).                                                                                                                                                                                                              |
+| `template database "template1" has a collation version mismatch` | You have a database volume from an older checkout that used a different Postgres image. It's disposable: `docker compose down -v`, then `task setup`.                                                                                                                                                                                               |
+| `Could not download …` from `task setup` / `task data:load`      | No internet, or USGS is unreachable. Download the zip from the [data page](https://eerscmap.usgs.gov/uspvdb/data/), put it in `backend/`, and run `task data:load -- uspvdbGeoJSON.zip`.                                                                                                                                                            |
+| The map loads but shows no solar facilities                      | The data isn't loaded: run `task data:load`.                                                                                                                                                                                                                                                                                                        |
+| The map doesn't zoom to my location                              | Allow location access when the browser asks (and check the site isn't blocked in the browser's settings). Browsers only offer location on `https://` or `http://localhost`, so it won't work if you reach the app by another address, e.g. `http://192.168.x.x:8000`. Locations outside the US are ignored, since the data only covers the US.      |
+| Map tiles show `403 Access Blocked`                              | OpenStreetMap's public tile server blocked the request. It requires the browser to send a `Referer` header (the app is configured to allow this); browser privacy extensions that strip it can trigger the block. The public server is best-effort — see [OpenStreetMap's tile usage policy](https://operations.osmfoundation.org/policies/tiles/). |
 
 ## Contributing / project workflow
 
