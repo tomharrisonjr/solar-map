@@ -1,0 +1,8 @@
+# Keep secrets and local state out of the image (the Dockerfile does `COPY . .`).
+.env
+.env.*
+!.env.example
+staticfiles/
+__pycache__/
+*.pyc
+.ruff_cache/

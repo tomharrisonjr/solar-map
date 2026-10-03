@@ -9,7 +9,7 @@
 | Status | # | Step |
 |--------|---|------|
 | ✅ Done | 1 | Production-ready Django settings and server |
-| ⬜ Pending | 2 | Production compose file and Caddy |
+| ✅ Done | 2 | Production compose file and Caddy |
 | ⬜ Pending | 3 | Replace the OpenStreetMap basemap |
 | ⬜ Pending | 4 | Provision the instance, DNS and backups |
 | ⬜ Pending | 5 | First deploy, data load and docs |
@@ -63,7 +63,7 @@ Open questions to settle while implementing:
 Tests: settings parse the new variables (list splitting, defaults); static files served with
 `DEBUG=False`.
 
-## Step 2 — Production compose file and Caddy
+## Step 2 — Production compose file and Caddy (#36)
 
 New `docker-compose.prod.yml` (override or standalone) and `Caddyfile`:
 

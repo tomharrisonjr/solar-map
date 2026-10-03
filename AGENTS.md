@@ -14,9 +14,13 @@ frontend is a later phase.
 ```
 README.md              getting started for humans: prerequisites, `task setup`, troubleshooting
 Taskfile.yml           dev workflow: setup/data:load/check/migrate, worktree new/rm/list (`task --list`)
+docker-compose.prod.yml  single-host production stack: Caddy (TLS) + gunicorn web + PostGIS; configured
+                       by `backend/.env` via `--env-file` (see the header comment)
+Caddyfile              reverse proxy for the prod stack; site address comes from `SITE_ADDRESS`
 .env.example            docker-compose port variables (DB_PORT, WEB_PORT); copy to .env (gitignored)
 backend/
   Dockerfile           python:3.14-slim + gdal-bin/libgdal-dev/libgeos-dev/libproj-dev
+  .dockerignore        keeps .env and local state out of the image
   requirements.txt     Django, djangorestframework, djangorestframework-gis, psycopg
   requirements-dev.txt requirements.txt + ruff
   pyproject.toml       ruff config (E, F, I, UP, B, DJ; migrations excluded)
