@@ -109,13 +109,13 @@ work.
   work progresses.
 - **Starting a step doesn't happen until implementation begins** — steps don't get their
   own issue or branch just for being planned. When you're ready to work on one (e.g. "start
-  step 3 of `docs/plans/foo.md`"), use `/start-step <plan-doc> <step-number>`, which:
+  step 3 of `docs/plans/foo.md`"), use `/start-work <plan-doc> <step-number>`, which:
   1. Creates a child GitHub issue for that step, linked to the plan's parent issue.
   2. Creates an isolated git worktree with `task wt:new -- <type>/gh-<issue>-<desc>` —
      `type` is `chore`/`bug`/`feature`, `issue` is the new child issue number, `desc` is a
      slugified step title. Working in a worktree means this can be kicked off regardless
      of what branch or process is currently active in the main checkout.
-  See `.claude/commands/start-step.md` for the exact procedure.
+  See `.claude/commands/start-work.md` for the exact procedure.
 - **Before considering a change done**, `task check` must pass (it runs
   `docker compose run --rm web ruff check .` and
   `docker compose run --rm web python manage.py test`).
@@ -146,7 +146,7 @@ rather than raw `git worktree` so setup is consistent:
 - `task wt:list` — show worktrees.
 - Dependencies, build caches and other gitignored state aren't shared between worktrees;
   Docker containers/volumes are per-worktree (named after the folder).
-- **Claude Code:** `/start-step` switches the session into the new worktree with the
+- **Claude Code:** `/start-work` switches the session into the new worktree with the
   `EnterWorktree` tool (`path` parameter). `.claude/settings.json` allows that tool without a
   prompt. `ExitWorktree` is deliberately *not* allowed: with `action: "remove"` it deletes a
   worktree and its branch, so it keeps asking.
