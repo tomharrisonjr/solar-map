@@ -58,7 +58,8 @@ downloaded — dots when zoomed out, real panel-array polygons from zoom 9.
 1. creates `backend/.env` from `backend/.env.example` if it doesn't exist,
 2. builds the Django image,
 3. starts the database and applies migrations, and
-4. downloads the official USPVDB release from USGS and loads it (~6,600 facilities, a few seconds).
+4. downloads the official USPVDB release from USGS and loads it (~6,600 facilities, a few seconds), and
+5. creates `backend/.venv` and points VS Code at it (see [Editor setup](#editor-setup)).
 
 It's safe to run again: nothing is duplicated and your `.env` is never overwritten.
 
@@ -75,6 +76,7 @@ Run `task --list` to see them all.
 | `task migrate`                                                 | Start the database and apply migrations                                                                     |
 | `task data:load`                                               | Download and (re)load the USPVDB dataset — use this to refresh the data                                     |
 | `task env`                                                     | Create `backend/.env` from the example if missing (also done by `task setup`)                               |
+| `task venv` / `task vscode`                                    | Create `backend/.venv` and set VS Code's interpreter to it (both done by `task setup`)                      |
 | `docker compose run --rm web python manage.py createsuperuser` | Create an admin user for <http://localhost:8000/admin/>                                                     |
 | `docker compose down -v`                                       | Stop everything **and delete the database** (start over with `task setup`)                                  |
 
@@ -96,6 +98,18 @@ and `task check` to:
 docker compose run --rm web ruff check .
 docker compose run --rm web python manage.py test
 ```
+
+## Editor setup
+
+Django runs inside Docker, so your host Python has no Django installed and an editor shows
+every import (`django.contrib.gis…`, `rest_framework`, …) as unresolved. `task venv` creates
+`backend/.venv` from `requirements-dev.txt` purely so the editor can resolve imports; nothing
+runs from it. It's skipped when the requirements haven't changed (`task venv --force` rebuilds).
+
+For VS Code, `task vscode` adds `python.defaultInterpreterPath` to `.vscode/settings.json`
+(gitignored; existing settings are kept). Then run **Developer: Reload Window**. On other
+editors, select `backend/.venv/bin/python` as the interpreter. The venv is per-machine and
+isn't committed — run `task setup` (or `task venv`) on each machine.
 
 ## Configuration
 

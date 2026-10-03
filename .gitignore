@@ -24,3 +24,6 @@ backend/media/
 
 # ruff
 .ruff_cache/
+
+# Taskfile
+**/.task/checksum

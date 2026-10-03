@@ -61,6 +61,8 @@ tasks:
       - task: env
       - docker compose build web
       - task: data:load
+      - task: venv
+      - task: vscode
 
   wt:list:
     desc: List git worktrees
@@ -118,3 +120,36 @@ tasks:
         git worktree remove "$path"
         # -d refuses to delete a branch that hasn't been merged.
         git branch -d "$branch"
+  
+  venv:
+    desc: "Create backend/.venv for editor import resolution (Django still runs in Docker)"
+    # Re-runs only when the requirements change or the venv is missing; `task venv --force` rebuilds.
+    sources:
+      - backend/requirements.txt
+      - backend/requirements-dev.txt
+    generates:
+      - backend/.venv/pyvenv.cfg
+    cmds:
+      - '[ -d backend/.venv ] || python3 -m venv backend/.venv'
+      - backend/.venv/bin/pip install -r backend/requirements-dev.txt
+
+  vscode:
+    desc: "Point VS Code at backend/.venv (adds the interpreter setting to .vscode/settings.json if missing)"
+    silent: true
+    # Always runs (cheap); merges into any existing settings and never overwrites a value already set.
+    cmds:
+      - |
+        python3 - <<'EOF'
+        import json, pathlib, sys
+        path = pathlib.Path(".vscode/settings.json")
+        key, value = "python.defaultInterpreterPath", "${workspaceFolder}/backend/.venv/bin/python"
+        try:
+            settings = json.loads(path.read_text()) if path.exists() else {}
+        except json.JSONDecodeError:
+            sys.exit(f"{path} has comments or invalid JSON; add {key} = {value} by hand")
+        if key not in settings:
+            settings[key] = value
+            path.parent.mkdir(exist_ok=True)
+            path.write_text(json.dumps(settings, indent=4) + "\n")
+            print(f"added {key} to {path}")
+        EOF

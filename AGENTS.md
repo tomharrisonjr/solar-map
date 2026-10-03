@@ -41,13 +41,15 @@ schema history — they're generated.
 [Task](https://taskfile.dev) (`Taskfile.yml`) wraps the common workflows — run `task --list`:
 
 ```
-task setup       # first time on a machine: backend/.env, build image, migrate, download + load data
+task setup       # first time on a machine: backend/.env, build image, migrate, load data, venv + VS Code
 task check       # lint + tests — the "before done" gate
 task lint        # ruff
 task test        # Django tests
 task migrate     # start db, apply migrations
 task data:load   # (re)load USPVDB from the official URL; `-- <path-or-url>` to override the source
 task env         # create backend/.env from the example if missing (setup runs this)
+task venv        # backend/.venv from requirements-dev.txt, for editor import resolution only (setup runs this)
+task vscode      # add python.defaultInterpreterPath to gitignored .vscode/settings.json (setup runs this)
 ```
 
 `load_uspvdb` with no argument downloads the official zip itself and finds the versioned
