@@ -1,6 +1,8 @@
+import importlib
 import io
 import json
 import math
+import os
 import tempfile
 import urllib.error
 import zipfile
@@ -10,11 +12,13 @@ from unittest.mock import patch
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.contrib.staticfiles import finders
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from config import settings as settings_module
 from facilities.management.commands.load_uspvdb import (
     DEFAULT_SOURCE,
     DOWNLOAD_TIMEOUT_SECONDS,
@@ -479,3 +483,79 @@ class TileEndpointTests(TestCase):
         self.assertFalse(is_valid_tile(MAX_ZOOM + 1, 0, 0))
         self.assertFalse(is_valid_tile(3, 8, 0))
         self.assertFalse(is_valid_tile(3, 0, -1))
+
+
+class ProductionSettingsTests(SimpleTestCase):
+    """The settings module is re-imported under patched env vars (and restored afterwards)."""
+
+    def load_settings(self, **env: str):
+        self.addCleanup(importlib.reload, settings_module)
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret", **env}):
+            return importlib.reload(settings_module)
+
+    def test_env_list_trims_whitespace_and_drops_empty_items(self) -> None:
+        with patch.dict(os.environ, {"X_LIST": " a.example.com, ,b.example.com ,"}):
+            self.assertEqual(settings_module.env_list("X_LIST"), ["a.example.com", "b.example.com"])
+        self.assertEqual(settings_module.env_list("X_UNSET_LIST"), [])
+        self.assertEqual(settings_module.env_list("X_UNSET_LIST", "a,b"), ["a", "b"])
+
+    def test_env_bool_accepts_common_truthy_spellings(self) -> None:
+        cases = [("True", True), ("1", True), ("yes", True), ("False", False), ("", False)]
+        for value, expected in cases:
+            with self.subTest(value=value), patch.dict(os.environ, {"X_FLAG": value}):
+                self.assertIs(settings_module.env_bool("X_FLAG"), expected)
+        self.assertIs(settings_module.env_bool("X_UNSET_FLAG"), False)
+        self.assertIs(settings_module.env_bool("X_UNSET_FLAG", True), True)
+
+    def test_csrf_trusted_origins_and_allowed_hosts_are_split(self) -> None:
+        loaded = self.load_settings(
+            CSRF_TRUSTED_ORIGINS="https://a.example.com,https://b.example.com",
+            ALLOWED_HOSTS="a.example.com, b.example.com",
+        )
+
+        self.assertEqual(loaded.CSRF_TRUSTED_ORIGINS, ["https://a.example.com", "https://b.example.com"])
+        self.assertEqual(loaded.ALLOWED_HOSTS, ["a.example.com", "b.example.com"])
+
+    def test_proxy_settings_are_off_by_default_and_on_with_the_flag(self) -> None:
+        off = self.load_settings(BEHIND_PROXY="False")
+        self.assertFalse(hasattr(off, "SECURE_PROXY_SSL_HEADER"))
+        self.assertFalse(hasattr(off, "CSRF_COOKIE_SECURE"))
+
+        on = self.load_settings(BEHIND_PROXY="True")
+        self.assertEqual(on.SECURE_PROXY_SSL_HEADER, ("HTTP_X_FORWARDED_PROTO", "https"))
+        self.assertTrue(on.CSRF_COOKIE_SECURE)
+        self.assertTrue(on.SESSION_COOKIE_SECURE)
+
+    def test_referrer_policy_stays_non_restrictive(self) -> None:
+        self.assertEqual(
+            self.load_settings(BEHIND_PROXY="True").SECURE_REFERRER_POLICY,
+            "strict-origin-when-cross-origin",
+        )
+
+    def test_default_secret_key_is_refused_when_debug_is_off(self) -> None:
+        self.addCleanup(importlib.reload, settings_module)
+        env = {"DEBUG": "False", "SECRET_KEY": settings_module.DEFAULT_SECRET_KEY}
+        with patch.dict(os.environ, env):
+            with self.assertRaisesMessage(ImproperlyConfigured, "SECRET_KEY"):
+                importlib.reload(settings_module)
+
+    def test_default_secret_key_is_allowed_when_debug_is_on(self) -> None:
+        loaded = self.load_settings(DEBUG="True", SECRET_KEY=settings_module.DEFAULT_SECRET_KEY)
+
+        self.assertTrue(loaded.DEBUG)
+
+    def test_real_secret_key_is_accepted_when_debug_is_off(self) -> None:
+        self.assertEqual(self.load_settings(DEBUG="False").SECRET_KEY, "test-secret")
+
+
+class StaticFilesServingTests(SimpleTestCase):
+    def test_whitenoise_serves_collected_static_files_with_debug_off(self) -> None:
+        static_root = tempfile.TemporaryDirectory()
+        self.addCleanup(static_root.cleanup)
+        with override_settings(STATIC_ROOT=static_root.name, DEBUG=False):
+            call_command("collectstatic", interactive=False, verbosity=0)
+            # A fresh Client builds a fresh handler, so WhiteNoise indexes the new STATIC_ROOT.
+            response = Client().get("/static/facilities/map.js")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"maplibregl", b"".join(response.streaming_content))

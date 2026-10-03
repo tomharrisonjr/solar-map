@@ -2,13 +2,13 @@
 
 - GitHub Issue: #33
 - Date: 2026-09-30
-- Status: Draft
+- Status: In Progress
 
 ## Steps
 
 | Status | # | Step |
 |--------|---|------|
-| ⬜ Pending | 1 | Production-ready Django settings and server |
+| ✅ Done | 1 | Production-ready Django settings and server |
 | ⬜ Pending | 2 | Production compose file and Caddy |
 | ⬜ Pending | 3 | Replace the OpenStreetMap basemap |
 | ⬜ Pending | 4 | Provision the instance, DNS and backups |
@@ -46,7 +46,7 @@ Open questions to settle while implementing:
 - Deploy mechanism: `git pull` + `docker compose up -d --build` over SSH (default), vs. pushing
   images to ECR.
 
-## Step 1 — Production-ready Django settings and server
+## Step 1 — Production-ready Django settings and server (#34)
 
 `backend/config/settings.py`, `backend/requirements.txt`, `backend/.env.example`:
 

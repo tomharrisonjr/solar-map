@@ -18,4 +18,10 @@ RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY . .
 
+# Collect static files for WhiteNoise. SECRET_KEY is a throwaway so settings load without .env.
+RUN SECRET_KEY=build-only python manage.py collectstatic --noinput
+
 EXPOSE 8000
+
+# Production default; docker-compose.yml overrides this with runserver for local development.
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]

@@ -7,14 +7,33 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY: str = os.environ.get("SECRET_KEY", "change-me-in-real-envs")
-DEBUG: bool = os.environ.get("DEBUG", "False") == "True"
-ALLOWED_HOSTS: list[str] = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+
+def env_list(name: str, default: str = "") -> list[str]:
+    """A comma-separated env var as a list; whitespace is trimmed and empty items dropped."""
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    return os.environ.get(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+DEFAULT_SECRET_KEY = "change-me-in-real-envs"
+
+SECRET_KEY: str = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
+DEBUG: bool = env_bool("DEBUG")
+ALLOWED_HOSTS: list[str] = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
+# Full origins incl. scheme, e.g. https://solar-map.example.com — needed for POSTs (the admin
+# login) once the site is served over HTTPS.
+CSRF_TRUSTED_ORIGINS: list[str] = env_list("CSRF_TRUSTED_ORIGINS")
+
+if not DEBUG and SECRET_KEY == DEFAULT_SECRET_KEY:
+    raise ImproperlyConfigured("Set SECRET_KEY to a real secret when DEBUG is off.")
 
 INSTALLED_APPS: list[str] = [
     "django.contrib.admin",
@@ -35,6 +54,9 @@ MIDDLEWARE: list[str] = [
     # which is its mitigation for gzip + BREACH on the few HTML forms, e.g. the admin.)
     "django.middleware.gzip.GZipMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Serves collected static files from the app process (no nginx); must sit right after
+    # SecurityMiddleware, per the WhiteNoise docs.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -93,6 +115,16 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT: Path = BASE_DIR / "staticfiles"
+
+# Behind a TLS-terminating reverse proxy (Caddy in the AWS deploy): trust its
+# X-Forwarded-Proto header so Django knows the request was HTTPS, and mark cookies secure.
+# Off by default so local HTTP development is unaffected.
+BEHIND_PROXY: bool = env_bool("BEHIND_PROXY")
+if BEHIND_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
 
 # Django's default ("same-origin") strips the Referer from cross-origin requests. The map's
 # OpenStreetMap tile requests must carry a valid Referer or tile.openstreetmap.org blocks
