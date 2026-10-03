@@ -25,6 +25,9 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
+      # Keep the image's collected static files visible under the bind mount (WhiteNoise's
+      # STATIC_ROOT); an anonymous volume is seeded from the image on first use.
+      - /app/staticfiles
     ports:
       - "${WEB_PORT:-8000}:8000"
     env_file:
