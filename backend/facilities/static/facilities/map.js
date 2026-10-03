@@ -13,29 +13,27 @@
   const US_LNG_WEST_OF = -64;
   const US_LNG_EAST_OF = 172;
 
-  // Basemap: OpenStreetMap's public tile server, used per its tile usage policy
-  // (https://operations.osmfoundation.org/policies/tiles/): standard HTTPS host, only tiles
-  // in view are requested, browser HTTP caching is left intact, the page must not suppress
-  // the Referer (see SECURE_REFERRER_POLICY in settings.py), and attribution is always
-  // visible. This server is best-effort with no SLA — swap in a tile provider before any
-  // real deployment or heavy use.
+  // Basemap: raster tiles from the provider configured on the server (BASEMAP_* in
+  // settings.py; Stadia Maps' Alidade Smooth by default), rendered into the page as JSON.
+  // The provider identifies the site by the Referer/Origin of each tile request, so the page
+  // must not suppress it (SECURE_REFERRER_POLICY), and its attribution is always visible.
+  const basemap = JSON.parse(document.getElementById("basemap-config").textContent);
   const map = new maplibregl.Map({
     container: "map",
     style: {
       version: 8,
       sources: {
-        osm: {
+        basemap: {
           type: "raster",
-          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          tiles: [basemap.tilesUrl],
           tileSize: 256,
-          maxzoom: 19,
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+          maxzoom: basemap.maxZoom,
+          attribution: basemap.attribution,
         },
       },
-      layers: [{ id: "osm", type: "raster", source: "osm" }],
+      layers: [{ id: "basemap", type: "raster", source: "basemap" }],
     },
-    // compact: false keeps attribution expanded; the policy forbids hiding it behind a toggle.
+    // compact: false keeps attribution expanded; providers require it to stay visible.
     attributionControl: { compact: false },
     center: [-98.5, 39.8], // continental US (used unless the browser shares a location)
     zoom: 3.5,

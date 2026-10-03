@@ -180,12 +180,12 @@ SolarFacility.objects.annotate(distance=Distance("centroid", pt)).order_by("dist
   plain `postgres`; the official `postgis/postgis` is amd64-only) so the extension is
   available from the start; remember to run `CREATE EXTENSION postgis;` on the RDS
   instance before first migration.
-- **OpenStreetMap tile usage policy**: the map's basemap uses the public
-  `tile.openstreetmap.org` server, which requires a valid browser `Referer` (so
-  `SECURE_REFERRER_POLICY` must stay non-restrictive), visible attribution, and no bulk
-  fetching — and blocks violators with a `403`
-  (<https://operations.osmfoundation.org/policies/tiles/>). It is best-effort with no SLA;
-  switch to a tile provider before any real deployment or heavy use.
+- **Basemap tile provider**: the map uses Stadia Maps' Alidade Smooth raster tiles (free tier:
+  200k credits/month, **non-commercial use only**; domain-authenticated via the browser's
+  `Origin`/`Referer`, so `SECURE_REFERRER_POLICY` must stay non-restrictive and the deployed
+  domain must be registered in Stadia's dashboard). The provider is configured by `BASEMAP_*`
+  env vars, so moving to MapTiler or self-hosted tiles is a config change; revisit before any
+  commercial use.
 - Dataset licensing/attribution: confirm USPVDB and any paired datasets (GFW, WDPA) usage
   terms if the project is ever made public.
 

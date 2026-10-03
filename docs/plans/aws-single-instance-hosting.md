@@ -10,7 +10,7 @@
 |--------|---|------|
 | ✅ Done | 1 | Production-ready Django settings and server |
 | ⬜ Pending | 2 | Production compose file and Caddy |
-| ⬜ Pending | 3 | Replace the OpenStreetMap basemap |
+| ✅ Done | 3 | Replace the OpenStreetMap basemap |
 | ⬜ Pending | 4 | Provision the instance, DNS and backups |
 | ⬜ Pending | 5 | First deploy, data load and docs |
 
@@ -77,7 +77,7 @@ New `docker-compose.prod.yml` (override or standalone) and `Caddyfile`:
 Verify locally by running the prod file with a `localhost` Caddy site (no real cert) and hitting
 `/`, `/tiles/…`, `/api/facilities/nearest/`.
 
-## Step 3 — Replace the OpenStreetMap basemap
+## Step 3 — Replace the OpenStreetMap basemap (#38)
 
 `AGENTS.md` notes `tile.openstreetmap.org` is best-effort with no SLA and must be replaced
 before deploying or heavy use. `facilities/static/facilities/map.js`, `map.html`, settings:
@@ -88,6 +88,16 @@ before deploying or heavy use. `facilities/static/facilities/map.js`, `map.html`
   `POLYGON_MIN_ZOOM` is; restrict the key by referrer/domain in the provider dashboard.
 - Keep attribution always visible. Update the OSM-policy bullet in `AGENTS.md` and the README's
   "OSM 403" troubleshooting entry.
+
+**Decision:** Stadia Maps, Alidade Smooth raster tiles. Free tier is 200k credits/month and
+non-commercial only (fine for this personal project; revisit if that changes). Domain-based
+auth means there is no key to leak: the deployed domain is registered in Stadia's dashboard and
+`localhost` works unregistered, so `BASEMAP_API_KEY` is optional and only for other providers.
+MapTiler's free tier (100k requests/month, hard stop when exceeded, logo required) was the
+runner-up; self-hosted PMTiles was rejected as too much storage and ops for a small map. The
+provider is swappable through `BASEMAP_*` env vars.
+Note: `docker-compose.prod.yml` (step 2) passes an explicit list of variables to `web`, so
+`BASEMAP_*` overrides need adding there if the Stadia default is ever changed in production.
 
 ## Step 4 — Provision the instance, DNS and backups
 

@@ -126,9 +126,31 @@ if BEHIND_PROXY:
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
 
-# Django's default ("same-origin") strips the Referer from cross-origin requests. The map's
-# OpenStreetMap tile requests must carry a valid Referer or tile.openstreetmap.org blocks
-# them (https://operations.osmfoundation.org/policies/tiles/). This is the browser default.
+# Basemap raster tiles drawn under the facilities. Defaults to Stadia Maps' Alidade Smooth,
+# which authenticates a site by its Origin/Referer (register the domain in the Stadia
+# dashboard; localhost works without it, rate-limited), so no key is needed. Free tier:
+# 200k credits/month, non-commercial use only. Another provider is a matter of env vars:
+# BASEMAP_TILES_URL ({z}/{x}/{y} template), BASEMAP_ATTRIBUTION (HTML, always shown), and
+# BASEMAP_API_KEY if that provider wants one (sent as `?api_key=`; restrict it by referrer in
+# the provider's dashboard, since it is visible in the page).
+BASEMAP_TILES_URL: str = os.environ.get(
+    "BASEMAP_TILES_URL", "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png"
+)
+BASEMAP_API_KEY: str = os.environ.get("BASEMAP_API_KEY", "")
+BASEMAP_MAX_ZOOM: int = int(os.environ.get("BASEMAP_MAX_ZOOM", "20"))
+BASEMAP_ATTRIBUTION: str = os.environ.get(
+    "BASEMAP_ATTRIBUTION",
+    '&copy; <a href="https://stadiamaps.com/attribution/" target="_blank" rel="noopener">'
+    "Stadia Maps</a>"
+    ' &copy; <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>'
+    ' &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">'
+    "OpenStreetMap</a>",
+)
+
+# Django's default ("same-origin") strips the Referer from cross-origin requests. Tile
+# providers identify the site by the Referer/Origin of each tile request (Stadia's domain
+# auth; OpenStreetMap blocked requests without one), so it must keep being sent. This is the
+# browser default.
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
+from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.geos import Point
 from django.db.models import QuerySet
@@ -38,6 +40,19 @@ def _parse_param(params, name: str, cast, low, high):
     return value
 
 
+def basemap_config() -> dict[str, Any]:
+    """The basemap source for the page, from settings (see BASEMAP_* in config/settings.py)."""
+    tiles_url = settings.BASEMAP_TILES_URL
+    if settings.BASEMAP_API_KEY:
+        separator = "&" if "?" in tiles_url else "?"
+        tiles_url += f"{separator}api_key={quote(settings.BASEMAP_API_KEY, safe='')}"
+    return {
+        "tilesUrl": tiles_url,
+        "maxZoom": settings.BASEMAP_MAX_ZOOM,
+        "attribution": settings.BASEMAP_ATTRIBUTION,
+    }
+
+
 class MapView(TemplateView):
     """Server-rendered page hosting the MapLibre map.
 
@@ -52,6 +67,7 @@ class MapView(TemplateView):
         # One source of truth: the zoom at which tiles start to include polygons is also the
         # zoom at which the map switches from centroid points to polygon layers.
         context["polygon_min_zoom"] = POLYGON_MIN_ZOOM
+        context["basemap"] = basemap_config()
         return context
 
 
