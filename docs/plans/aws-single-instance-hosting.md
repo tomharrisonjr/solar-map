@@ -11,7 +11,7 @@
 | ✅ Done | 1 | Production-ready Django settings and server |
 | ✅ Done | 2 | Production compose file and Caddy |
 | ✅ Done | 3 | Replace the OpenStreetMap basemap |
-| 🔄 In Progress | 4 | Terraform: Lightsail instance, DNS and backups |
+| ✅ Done | 4 | Terraform: Lightsail instance, DNS and backups |
 | ⬜ Pending | 5 | First deploy, data load and docs |
 
 ## Context
@@ -163,6 +163,26 @@ Verify: `terraform validate`, then `terraform plan` reviewed before the first `a
 creates billable resources, so the user runs or approves it); after apply confirm
 `dig solar-map.tomharrisonjr.com` returns the static IP, SSH works, and `docker compose version`
 runs on the box. A `terraform destroy` + `apply` drill proves it's reproducible.
+
+**As shipped:**
+
+- `infra/` as planned, plus workspaces (`dev`/`staging`/`prod`, `envs/<env>.tfvars`, the `default`
+  workspace refused by a precondition) and an optional `alias`. Prod: A record
+  `solar-map-prod.tomharrisonjr.com`, CNAME `solar-map.tomharrisonjr.com` → it. Region
+  `us-east-2`, profile via `aws_profile`, bundle `small_3_0`.
+- The public name is the alias: `Caddyfile` serves `SITE_ADDRESS, REDIRECT_FROM` and 301s any
+  other host to `SITE_ADDRESS` (compose defaults `REDIRECT_FROM` to `SITE_ADDRESS`; documented in
+  `backend/.env.example`). `terraform output` gives `site_address`/`redirect_from`.
+- Snapshots are **daily** (last 7 kept): Lightsail's `AutoSnapshot` has no weekly option.
+- Secrets stay a hand-made `backend/.env` (decision: Lightsail instances can't have IAM roles, so
+  no native Parameter Store injection; EC2 + Parameter Store is the alternative if that matters).
+- `task tf:*` wrappers (`ENV=` validated by Task's `requires` enum); `tf:check` is part of
+  `task check`. README lists Terraform/AWS CLI as optional prerequisites; `AGENTS.md` layout updated.
+- Verified: `task check` (ruff, 48 tests, `terraform fmt`/`validate`); `terraform plan` for dev
+  and prod against the real account (6 and 7 resources to add, nothing else); `default` workspace
+  and bad/missing `ENV` rejected; Caddy config validates and the redirect keeps path + query.
+  **Not applied** — `terraform apply` (billable, ~$12/mo) is left for the user, and the live
+  Let's Encrypt flow is untested until the instance exists.
 
 ## Step 5 — First deploy, data load and docs
 

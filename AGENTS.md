@@ -16,7 +16,10 @@ README.md              getting started for humans: prerequisites, `task setup`, 
 Taskfile.yml           dev workflow: setup/data:load/check/migrate, worktree new/rm/list (`task --list`)
 docker-compose.prod.yml  single-host production stack: Caddy (TLS) + gunicorn web + PostGIS; configured
                        by `backend/.env` via `--env-file` (see the header comment)
-Caddyfile              reverse proxy for the prod stack; site address comes from `SITE_ADDRESS`
+Caddyfile              reverse proxy for the prod stack; serves `SITE_ADDRESS` and 301-redirects the
+                       optional `REDIRECT_FROM` hostname to it
+infra/                 Terraform for the AWS host (Lightsail + static IP + Route 53); one workspace per
+                       environment (dev/staging/prod), settings in `envs/<env>.tfvars`
 .env.example            docker-compose port variables (DB_PORT, WEB_PORT); copy to .env (gitignored)
 backend/
   Dockerfile           python:3.14-slim + gdal-bin/libgdal-dev/libgeos-dev/libproj-dev
@@ -53,6 +56,8 @@ task migrate     # start db, apply migrations
 task data:load   # (re)load USPVDB from the official URL; `-- <path-or-url>` to override the source
 task env         # create backend/.env from the example if missing (setup runs this)
 task venv        # backend/.venv from requirements-dev.txt, for editor import resolution only (setup runs this)
+task tf:plan ENV=prod   # Terraform plan for an environment (dev|staging|prod); `tf:apply` creates billable AWS resources
+task tf:check    # terraform fmt -check + validate (part of `task check`; skipped if terraform isn't installed)
 task vscode      # add python.defaultInterpreterPath to gitignored .vscode/settings.json (setup runs this)
 ```
 
