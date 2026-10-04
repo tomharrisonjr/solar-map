@@ -34,6 +34,8 @@
   </div>
 
   <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+  {# json_script escapes the values, so an env-supplied attribution or URL can't break out of the tag. #}
+  {{ basemap|json_script:"basemap-config" }}
   <script>
     window.SOLAR_MAP_CONFIG = {
       // Vector tiles (see facilities/tiles.py). {z}/{x}/{y} are MapLibre placeholders, so the path

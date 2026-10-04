@@ -28,7 +28,7 @@ Install these first. Each row says how to check that it's installed.
 Also needed:
 
 - **Docker must be running** (start Docker Desktop, or the Docker service on Linux) before you run any command below.
-- **Internet access** for the first setup (pulls container images, installs Python packages, downloads the ~10 MB dataset from USGS) and whenever you view the map (MapLibre is loaded from a CDN and the basemap tiles come from OpenStreetMap).
+- **Internet access** for the first setup (pulls container images, installs Python packages, downloads the ~10 MB dataset from USGS) and whenever you view the map (MapLibre is loaded from a CDN and the basemap tiles come from Stadia Maps).
 - **Disk space:** about 3 GB (the container images are ~2.3 GB).
 - **Free ports:** `5432` (Postgres) and `8000` (the web app). If either is taken, see [Configuration](#configuration).
 
@@ -58,7 +58,8 @@ downloaded — dots when zoomed out, real panel-array polygons from zoom 9.
 1. creates `backend/.env` from `backend/.env.example` if it doesn't exist,
 2. builds the Django image,
 3. starts the database and applies migrations, and
-4. downloads the official USPVDB release from USGS and loads it (~6,600 facilities, a few seconds).
+4. downloads the official USPVDB release from USGS and loads it (~6,600 facilities, a few seconds), and
+5. creates `backend/.venv` and points VS Code at it (see [Editor setup](#editor-setup)).
 
 It's safe to run again: nothing is duplicated and your `.env` is never overwritten.
 
@@ -75,6 +76,7 @@ Run `task --list` to see them all.
 | `task migrate`                                                 | Start the database and apply migrations                                                                     |
 | `task data:load`                                               | Download and (re)load the USPVDB dataset — use this to refresh the data                                     |
 | `task env`                                                     | Create `backend/.env` from the example if missing (also done by `task setup`)                               |
+| `task venv` / `task vscode`                                    | Create `backend/.venv` and set VS Code's interpreter to it (both done by `task setup`)                      |
 | `docker compose run --rm web python manage.py createsuperuser` | Create an admin user for <http://localhost:8000/admin/>                                                     |
 | `docker compose down -v`                                       | Stop everything **and delete the database** (start over with `task setup`)                                  |
 
@@ -96,6 +98,18 @@ and `task check` to:
 docker compose run --rm web ruff check .
 docker compose run --rm web python manage.py test
 ```
+
+## Editor setup
+
+Django runs inside Docker, so your host Python has no Django installed and an editor shows
+every import (`django.contrib.gis…`, `rest_framework`, …) as unresolved. `task venv` creates
+`backend/.venv` from `requirements-dev.txt` purely so the editor can resolve imports; nothing
+runs from it. It's skipped when the requirements haven't changed (`task venv --force` rebuilds).
+
+For VS Code, `task vscode` adds `python.defaultInterpreterPath` to `.vscode/settings.json`
+(gitignored; existing settings are kept). Then run **Developer: Reload Window**. On other
+editors, select `backend/.venv/bin/python` as the interpreter. The venv is per-machine and
+isn't committed — run `task setup` (or `task venv`) on each machine.
 
 ## Configuration
 
@@ -150,7 +164,7 @@ Example: `curl "http://localhost:8000/api/facilities/nearest/?lat=34.05&lon=-118
 | `Could not download …` from `task setup` / `task data:load`      | No internet, or USGS is unreachable. Download the zip from the [data page](https://eerscmap.usgs.gov/uspvdb/data/), put it in `backend/`, and run `task data:load -- uspvdbGeoJSON.zip`.                                                                                                                                                            |
 | The map loads but shows no solar facilities                      | The data isn't loaded: run `task data:load`.                                                                                                                                                                                                                                                                                                        |
 | The map doesn't zoom to my location                              | Allow location access when the browser asks (and check the site isn't blocked in the browser's settings). Browsers only offer location on `https://` or `http://localhost`, so it won't work if you reach the app by another address, e.g. `http://192.168.x.x:8000`. Locations outside the US are ignored, since the data only covers the US.      |
-| Map tiles show `403 Access Blocked`                              | OpenStreetMap's public tile server blocked the request. It requires the browser to send a `Referer` header (the app is configured to allow this); browser privacy extensions that strip it can trigger the block. The public server is best-effort — see [OpenStreetMap's tile usage policy](https://operations.osmfoundation.org/policies/tiles/). |
+| Map tiles show `403`/`401` or a blank basemap                    | The tile provider refused the request. Stadia Maps identifies the site by the `Referer`/`Origin` the browser sends (the app allows this; privacy extensions that strip it can trigger a refusal), and a non-`localhost` hostname must be added in the [Stadia dashboard](https://client.stadiamaps.com/). Free usage is rate-limited and non-commercial; see `BASEMAP_*` in `backend/.env.example` to point at another provider. |
 
 ## Contributing / project workflow
 
@@ -169,9 +183,10 @@ Example: `curl "http://localhost:8000/api/facilities/nearest/?lat=34.05&lon=-118
   by the MIT License. It is downloaded from USGS when you run `task setup`; see the
   [citation above](#the-data) and the [USPVDB data page](https://eerscmap.usgs.gov/uspvdb/data/)
   for its terms.
-- **Basemap:** © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, made
-  available under the [ODbL](https://opendatacommons.org/licenses/odbl/); tiles are served by
-  OpenStreetMap's public server under its
-  [tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+- **Basemap:** © [Stadia Maps](https://stadiamaps.com/attribution/),
+  © [OpenMapTiles](https://openmaptiles.org/), © [OpenStreetMap](https://www.openstreetmap.org/copyright)
+  contributors (OSM data under the [ODbL](https://opendatacommons.org/licenses/odbl/)). Tiles come
+  from Stadia Maps' free tier, which is for non-commercial use only; see
+  [their terms](https://stadiamaps.com/terms-of-service/) before using this commercially.
 - **Libraries** (Django, Django REST Framework, MapLibre GL JS, PostGIS, …) keep their own
   licenses.

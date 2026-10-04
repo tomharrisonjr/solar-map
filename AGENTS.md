@@ -45,13 +45,15 @@ schema history — they're generated.
 [Task](https://taskfile.dev) (`Taskfile.yml`) wraps the common workflows — run `task --list`:
 
 ```
-task setup       # first time on a machine: backend/.env, build image, migrate, download + load data
+task setup       # first time on a machine: backend/.env, build image, migrate, load data, venv + VS Code
 task check       # lint + tests — the "before done" gate
 task lint        # ruff
 task test        # Django tests
 task migrate     # start db, apply migrations
 task data:load   # (re)load USPVDB from the official URL; `-- <path-or-url>` to override the source
 task env         # create backend/.env from the example if missing (setup runs this)
+task venv        # backend/.venv from requirements-dev.txt, for editor import resolution only (setup runs this)
+task vscode      # add python.defaultInterpreterPath to gitignored .vscode/settings.json (setup runs this)
 ```
 
 `load_uspvdb` with no argument downloads the official zip itself and finds the versioned
@@ -174,12 +176,15 @@ rather than raw `git worktree` so setup is consistent:
   page gets `POLYGON_MIN_ZOOM` from the server so client layers and tiles can't drift apart.
   Send only what the client draws; measure with real data before tuning (numbers in
   `docs/plans/vector-tile-map.md`).
-- **OpenStreetMap tiles**: the map's basemap uses `tile.openstreetmap.org`, which is bound
-  by <https://operations.osmfoundation.org/policies/tiles/> and blocks violators with a
-  403. Keep: `SECURE_REFERRER_POLICY` non-restrictive (browsers must send a valid
-  `Referer`), attribution always visible (not collapsed), HTTPS and the standard hostname,
-  no pre-fetching/bulk downloads, no `no-cache` headers on tiles. It's best-effort with no
-  SLA — switch to a tile provider before deploying or heavy use.
+- **Basemap tiles**: raster tiles from Stadia Maps' Alidade Smooth (free tier: 200k
+  credits/month, non-commercial only), configured by `BASEMAP_*` settings/env
+  (`BASEMAP_TILES_URL`, `BASEMAP_ATTRIBUTION`, `BASEMAP_MAX_ZOOM`, optional `BASEMAP_API_KEY`)
+  and handed to the page as JSON (`json_script`) by `basemap_config()` in
+  `facilities/views.py` — never hardcode a tile host in `map.js`. Stadia authenticates by the
+  request's `Origin`/`Referer` (register new domains in its dashboard; `localhost` works
+  unregistered), so keep `SECURE_REFERRER_POLICY` non-restrictive. Keep attribution always
+  visible (`attributionControl: { compact: false }`). Don't use `tile.openstreetmap.org`: it's
+  best-effort with no SLA and blocks heavy or referrer-less use.
 - **Annotate class attributes.** New and touched classes should carry PEP 526 variable
   annotations on class-level attributes — model fields, `Meta`/config attributes, and
   viewset/serializer attributes (`queryset: QuerySet[SolarFacility] = ...`,

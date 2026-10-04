@@ -302,12 +302,53 @@ class MapViewTests(TestCase):
     def test_page_configures_the_initial_user_radius(self) -> None:
         self.assertContains(self.client.get("/"), "userRadiusKm: 100,")
 
-    def test_page_does_not_suppress_referer_for_osm_tiles(self) -> None:
-        # OSM's tile usage policy requires browsers to send a valid Referer; Django's default
-        # "same-origin" policy would strip it from cross-origin tile requests (403 Access Blocked).
+    def test_page_does_not_suppress_referer_for_tile_requests(self) -> None:
+        # Tile providers identify the site by the Referer/Origin of each tile request (Stadia's
+        # domain auth); Django's default "same-origin" policy would strip it from cross-origin
+        # requests and the basemap would be refused.
         response = self.client.get("/")
 
         self.assertEqual(response["Referrer-Policy"], "strict-origin-when-cross-origin")
+
+    def test_page_basemap_defaults_to_stadia_alidade_smooth_without_a_key(self) -> None:
+        basemap = self.client.get("/").context["basemap"]
+
+        self.assertEqual(
+            basemap["tilesUrl"], "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png"
+        )
+        self.assertEqual(basemap["maxZoom"], 20)
+        for credit in ("Stadia Maps", "OpenMapTiles", "OpenStreetMap"):
+            self.assertIn(credit, basemap["attribution"])
+
+    def test_page_no_longer_uses_the_openstreetmap_tile_server(self) -> None:
+        self.assertNotContains(self.client.get("/"), "tile.openstreetmap.org")
+        map_js = Path(finders.find("facilities/map.js")).read_text()
+        self.assertNotIn("tile.openstreetmap.org", map_js)
+
+    def test_page_embeds_basemap_config_as_json_for_the_script(self) -> None:
+        response = self.client.get("/")
+
+        self.assertContains(response, '<script id="basemap-config" type="application/json">')
+
+    @override_settings(BASEMAP_API_KEY="k e&y")
+    def test_basemap_api_key_is_appended_url_encoded(self) -> None:
+        tiles_url = self.client.get("/").context["basemap"]["tilesUrl"]
+
+        self.assertTrue(tiles_url.endswith("/{z}/{x}/{y}.png?api_key=k%20e%26y"), tiles_url)
+
+    @override_settings(
+        BASEMAP_API_KEY="abc", BASEMAP_TILES_URL="https://tiles.example.com/{z}/{x}/{y}.png?style=light"
+    )
+    def test_basemap_api_key_joins_an_existing_query_string(self) -> None:
+        tiles_url = self.client.get("/").context["basemap"]["tilesUrl"]
+
+        self.assertEqual(tiles_url, "https://tiles.example.com/{z}/{x}/{y}.png?style=light&api_key=abc")
+
+    @override_settings(BASEMAP_ATTRIBUTION="</script><script>alert(1)</script>")
+    def test_basemap_config_cannot_break_out_of_its_script_tag(self) -> None:
+        response = self.client.get("/")
+
+        self.assertNotContains(response, "<script>alert(1)</script>")
 
     def test_map_script_is_served_by_staticfiles(self) -> None:
         self.assertIsNotNone(finders.find("facilities/map.js"))
@@ -525,6 +566,27 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertEqual(on.SECURE_PROXY_SSL_HEADER, ("HTTP_X_FORWARDED_PROTO", "https"))
         self.assertTrue(on.CSRF_COOKIE_SECURE)
         self.assertTrue(on.SESSION_COOKIE_SECURE)
+
+    def test_basemap_defaults_and_env_overrides(self) -> None:
+        default = self.load_settings()
+        self.assertEqual(
+            default.BASEMAP_TILES_URL,
+            "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png",
+        )
+        self.assertEqual(default.BASEMAP_API_KEY, "")
+        self.assertEqual(default.BASEMAP_MAX_ZOOM, 20)
+        self.assertIn("Stadia Maps", default.BASEMAP_ATTRIBUTION)
+
+        custom = self.load_settings(
+            BASEMAP_TILES_URL="https://tiles.example.com/{z}/{x}/{y}.png",
+            BASEMAP_API_KEY="abc",
+            BASEMAP_MAX_ZOOM="18",
+            BASEMAP_ATTRIBUTION="&copy; Example",
+        )
+        self.assertEqual(custom.BASEMAP_TILES_URL, "https://tiles.example.com/{z}/{x}/{y}.png")
+        self.assertEqual(custom.BASEMAP_API_KEY, "abc")
+        self.assertEqual(custom.BASEMAP_MAX_ZOOM, 18)
+        self.assertEqual(custom.BASEMAP_ATTRIBUTION, "&copy; Example")
 
     def test_referrer_policy_stays_non_restrictive(self) -> None:
         self.assertEqual(
