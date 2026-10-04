@@ -27,3 +27,12 @@ backend/media/
 
 # Taskfile
 **/.task/checksum
+
+# Terraform (the lock file IS committed; state and local variable values are not)
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfstate.d/
+*.tfvars
+# ...except the committed per-environment settings (non-secret)
+!infra/envs/*.tfvars
