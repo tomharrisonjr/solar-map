@@ -67,7 +67,7 @@ tasks:
   wt:list:
     desc: List git worktrees
     cmds:
-      - git worktree list
+      - git worktree list | grep -v '[main]'
 
   wt:new:
     silent: true
