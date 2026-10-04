@@ -81,6 +81,14 @@ docker compose up                                          # web (:8000) + db to
 Ruff is configured in `backend/pyproject.toml` (pycodestyle, pyflakes, isort, pyupgrade,
 bugbear, and Django-aware `DJ` rules; migrations excluded).
 
+**macOS shell tools:** macOS ships BSD `sed`, `date`, etc., whose flags differ from GNU's
+(e.g. `sed -i` needs a backup-suffix argument, and `sed` one-liners with `{...}` blocks
+differ). The dev machines here have Homebrew's `coreutils` and `gnu-sed` installed (listed
+in `README.md` prerequisites), which provide GNU versions under a `g` prefix: `gsed`,
+`gdate`, `gls`, `greadlink`, … So when a shell command needs GNU behavior, run the
+`g`-prefixed one. Files committed to the repo (Taskfile, scripts, docs) must stay portable
+and not depend on them: use POSIX-compatible syntax, or Python for non-trivial text edits.
+
 ## Workflow
 
 The repo is at `github.com/tomharrisonjr/solar-map`; `gh` is authenticated for issue/PR
