@@ -34,5 +34,6 @@ backend/media/
 *.tfstate.*
 terraform.tfstate.d/
 *.tfvars
+infra/.envrc
 # ...except the committed per-environment settings (non-secret)
 !infra/envs/*.tfvars

@@ -39,12 +39,12 @@ variable "ssh_public_key_path" {
 }
 
 variable "ssh_allowed_cidr" {
-  description = "CIDR allowed to reach SSH (port 22), e.g. your home IP as 203.0.113.7/32."
+  description = "CIDR allowed to reach SSH (port 22), e.g. your home IP as 203.0.113.7/32"
   type        = string
 
   validation {
     condition     = can(cidrhost(var.ssh_allowed_cidr, 0)) && var.ssh_allowed_cidr != "0.0.0.0/0"
-    error_message = "Must be a valid IPv4 CIDR and must not be 0.0.0.0/0."
+    error_message = "Must be a valid IPv4 CIDR and must not be 0.0.0.0/0"
   }
 }
 

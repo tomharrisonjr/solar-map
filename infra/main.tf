@@ -1,5 +1,6 @@
 locals {
   # One workspace per environment; every resource is named after it so they never collide.
+  # Lightsail names are unique across resource types within a region, hence the -key/-ip suffixes.
   environments = ["dev", "staging", "prod"]
   env          = terraform.workspace
   name         = "solar-map-${local.env}"
@@ -10,7 +11,7 @@ locals {
 }
 
 resource "aws_lightsail_key_pair" "this" {
-  name       = local.name
+  name       = "${local.name}-key"
   public_key = file(pathexpand(var.ssh_public_key_path))
 }
 
@@ -50,7 +51,7 @@ resource "aws_lightsail_instance" "this" {
 
 # A static IP survives instance replacement, so DNS never needs to change.
 resource "aws_lightsail_static_ip" "this" {
-  name = local.name
+  name = "${local.name}-ip"
 }
 
 resource "aws_lightsail_static_ip_attachment" "this" {
@@ -66,6 +67,9 @@ resource "aws_lightsail_instance_public_ports" "this" {
     from_port = 22
     to_port   = 22
     cidrs     = [var.ssh_allowed_cidr]
+    # Lightsail's console/CLI access (`aws lightsail get-instance-access-details`) uses temporary
+    # keys, so a lost key or changed home IP never locks you out.
+    cidr_list_aliases = ["lightsail-connect"]
   }
 
   port_info {

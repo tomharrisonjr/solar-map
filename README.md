@@ -34,7 +34,9 @@ Only if you manage the AWS hosting in [`infra/`](infra/) (not needed to run the 
 | **AWS CLI**   | Credentials (a named profile) for Terraform          | [AWS CLI install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)                         | `aws --version`     | AWS CLI 2      |
 
 Environments are Terraform workspaces (`dev`, `staging`, `prod`; settings in `infra/envs/<env>.tfvars`).
-Copy `infra/terraform.tfvars.example` to `infra/terraform.tfvars`, then `task tf:init` once and
+Supply your own AWS profile, SSH IP and public key — copy `infra/terraform.tfvars.example` to
+`infra/terraform.tfvars`, or with [direnv](https://direnv.net) copy `infra/.envrc.example` to
+`infra/.envrc` (both are gitignored and the example documents each value) — then `task tf:init` once and
 `task tf:plan ENV=prod` / `task tf:apply ENV=prod` (apply creates billable AWS resources).
 
 `task check` also runs `terraform fmt -check` and `terraform validate` when Terraform is installed
