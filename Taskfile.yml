@@ -194,7 +194,7 @@ tasks:
       - backend/.venv/bin/pip install -r backend/requirements-dev.txt
 
   vscode:
-    desc: "Point VS Code at backend/.venv (adds the interpreter setting to .vscode/settings.json if missing)"
+    desc: "Point VS Code at backend/.venv and use standard type checking (adds missing settings to .vscode/settings.json)"
     silent: true
     # Always runs (cheap); merges into any existing settings and never overwrites a value already set.
     cmds:
@@ -202,14 +202,18 @@ tasks:
         python3 - <<'EOF'
         import json, pathlib, sys
         path = pathlib.Path(".vscode/settings.json")
-        key, value = "python.defaultInterpreterPath", "${workspaceFolder}/backend/.venv/bin/python"
+        defaults = {
+            "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+            "python.analysis.typeCheckingMode": "standard",
+        }
         try:
             settings = json.loads(path.read_text()) if path.exists() else {}
         except json.JSONDecodeError:
-            sys.exit(f"{path} has comments or invalid JSON; add {key} = {value} by hand")
-        if key not in settings:
-            settings[key] = value
+            sys.exit(f"{path} has comments or invalid JSON; add {defaults} by hand")
+        added = [key for key in defaults if key not in settings]
+        if added:
+            settings.update({key: defaults[key] for key in added})
             path.parent.mkdir(exist_ok=True)
             path.write_text(json.dumps(settings, indent=4) + "\n")
-            print(f"added {key} to {path}")
+            print(f"added {', '.join(added)} to {path}")
         EOF

@@ -58,7 +58,7 @@ task env         # create backend/.env from the example if missing (setup runs t
 task venv        # backend/.venv from requirements-dev.txt, for editor import resolution only (setup runs this)
 task tf:plan ENV=prod   # Terraform plan for an environment (dev|staging|prod); `tf:apply` creates billable AWS resources
 task tf:check    # terraform fmt -check + validate (part of `task check`; skipped if terraform isn't installed)
-task vscode      # add python.defaultInterpreterPath to gitignored .vscode/settings.json (setup runs this)
+task vscode      # add interpreter path + standard type checking to gitignored .vscode/settings.json (setup runs this)
 ```
 
 `load_uspvdb` with no argument downloads the official zip itself and finds the versioned

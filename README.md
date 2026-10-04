@@ -121,7 +121,8 @@ every import (`django.contrib.gis…`, `rest_framework`, …) as unresolved. `ta
 `backend/.venv` from `requirements-dev.txt` purely so the editor can resolve imports; nothing
 runs from it. It's skipped when the requirements haven't changed (`task venv --force` rebuilds).
 
-For VS Code, `task vscode` adds `python.defaultInterpreterPath` to `.vscode/settings.json`
+For VS Code, `task vscode` adds `python.defaultInterpreterPath` and `python.analysis.typeCheckingMode: standard`
+(Django and DRF ship no type stubs, so Pylance's strict mode flags them) to `.vscode/settings.json`
 (gitignored; existing settings are kept). Then run **Developer: Reload Window**. On other
 editors, select `backend/.venv/bin/python` as the interpreter. The venv is per-machine and
 isn't committed — run `task setup` (or `task venv`) on each machine.
