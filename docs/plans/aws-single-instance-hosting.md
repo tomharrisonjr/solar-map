@@ -9,7 +9,7 @@
 | Status | # | Step |
 |--------|---|------|
 | ✅ Done | 1 | Production-ready Django settings and server |
-| ⬜ Pending | 2 | Production compose file and Caddy |
+| ✅ Done | 2 | Production compose file and Caddy |
 | ✅ Done | 3 | Replace the OpenStreetMap basemap |
 | ⬜ Pending | 4 | Provision the instance, DNS and backups |
 | ⬜ Pending | 5 | First deploy, data load and docs |
@@ -106,6 +106,8 @@ Mostly console/CLI work; record the exact commands in `docs/deploy.md`:
 - Lightsail instance (2 GB RAM, Ubuntu LTS) with Docker + Compose v2; static IP attached;
   firewall open on 22 (restricted to home IP), 80, 443 only.
 - DNS: A record `solar-map.tomharrisonjr.com` → static IP.
+- Register `solar-map.tomharrisonjr.com` in the Stadia Maps dashboard (the basemap authenticates
+  by domain; unregistered hosts get the strict unauthenticated rate limits).
 - Weekly automatic snapshot. The DB itself is rebuildable, so the snapshot mainly saves the
   `.env` and Caddy cert state.
 - Optional: capture the above as ~30 lines of Terraform if reproducibility becomes worthwhile.
@@ -113,8 +115,9 @@ Mostly console/CLI work; record the exact commands in `docs/deploy.md`:
 
 ## Step 5 — First deploy, data load and docs
 
-- Clone the repo on the instance, create prod `backend/.env`, `docker compose -f … up -d
-  --build`, `migrate`, `load_uspvdb` (the default source downloads the official zip).
+- Clone the repo on the instance, create prod `backend/.env`, then `docker compose --env-file
+  backend/.env -f docker-compose.prod.yml up -d --build`, `migrate`, `load_uspvdb` (the
+  default source downloads the official zip).
 - Verify over HTTPS: map renders, tiles load, `/api/facilities/nearest/?lat=…&lon=…` works,
   `/admin/` reachable, HTTP redirects to HTTPS.
 - Write `docs/deploy.md` (provisioning, deploy/update routine, refreshing data, restoring from
