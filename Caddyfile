@@ -1,0 +1,8 @@
+# Used by docker-compose.prod.yml. SITE_ADDRESS comes from backend/.env:
+#   solar-map.tomharrisonjr.com  -> automatic Let's Encrypt certificate + HTTP->HTTPS redirect
+#   localhost                    -> Caddy's internal CA (for trying the stack locally)
+# Caddy sets X-Forwarded-Proto/-For itself, which BEHIND_PROXY relies on. Compression is
+# left to Django's GZip middleware.
+{$SITE_ADDRESS} {
+	reverse_proxy web:8000
+}

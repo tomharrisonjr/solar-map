@@ -63,7 +63,7 @@ Open questions to settle while implementing:
 Tests: settings parse the new variables (list splitting, defaults); static files served with
 `DEBUG=False`.
 
-## Step 2 — Production compose file and Caddy
+## Step 2 — Production compose file and Caddy (#36)
 
 New `docker-compose.prod.yml` (override or standalone) and `Caddyfile`:
 
