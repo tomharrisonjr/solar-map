@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored) and fill in. These machine/person-specific values apply
+# to every environment; per-environment values (hostname) are committed in envs/<env>.tfvars.
+aws_profile      = "tharrisondev"
+ssh_allowed_cidr = "203.0.113.7/32" # your IP: curl -s https://checkip.amazonaws.com, plus /32
+
+# Optional (defaults shown):
+# ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+# aws_region          = "us-east-2"
+# bundle_id           = "small_3_0"

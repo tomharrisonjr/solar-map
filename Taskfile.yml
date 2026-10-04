@@ -29,10 +29,70 @@ tasks:
       - docker compose run --rm web python manage.py test
 
   check:
-    desc: Lint + tests — the gate before calling a change done
+    desc: Lint + tests (+ Terraform format/validate when terraform is installed) — the gate before calling a change done
     cmds:
       - task: lint
       - task: test
+      - task: tf:check
+
+  tf:check:
+    desc: terraform fmt -check + validate (skipped if terraform isn't installed)
+    # Needs no AWS credentials: validate runs with -backend=false and talks to nothing.
+    cmds:
+      - |
+        if ! command -v terraform >/dev/null 2>&1; then
+          echo "terraform not installed; skipping infra checks"
+          exit 0
+        fi
+        terraform -chdir=infra fmt -check -recursive
+        terraform -chdir=infra init -backend=false -input=false >/dev/null
+        terraform -chdir=infra validate
+
+  tf:init:
+    desc: Initialise Terraform in infra/
+    cmds:
+      - terraform -chdir=infra init
+
+  tf:fmt:
+    desc: Format the Terraform files
+    cmds:
+      - terraform -chdir=infra fmt -recursive
+
+  # One Terraform workspace per environment (dev, staging, prod); state for each lives in
+  # infra/terraform.tfstate.d/<env>/. ENV picks the workspace (via TF_WORKSPACE, so the
+  # selection never lingers in local files) and infra/envs/<ENV>.tfvars. Machine-specific values
+  # (profile, SSH CIDR) live in the gitignored infra/terraform.tfvars, shared by all envs.
+  tf:workspace:
+    desc: "Create the Terraform workspace for an environment if missing: task tf:workspace ENV=dev"
+    requires:
+      vars:
+        - name: ENV
+          enum: [dev, staging, prod]
+    cmds:
+      # TF_WORKSPACE is cleared here because `select` itself refuses to run when it's set.
+      - TF_WORKSPACE= terraform -chdir=infra workspace select -or-create {{.ENV}}
+
+  tf:plan:
+    desc: "Show what Terraform would change in AWS: task tf:plan ENV=dev"
+    requires:
+      vars:
+        - name: ENV
+          enum: [dev, staging, prod]
+    cmds:
+      - task: tf:workspace
+        vars: {ENV: "{{.ENV}}"}
+      - TF_WORKSPACE={{.ENV}} terraform -chdir=infra plan -var-file=envs/{{.ENV}}.tfvars
+
+  tf:apply:
+    desc: "Apply the Terraform plan — creates billable AWS resources: task tf:apply ENV=dev"
+    requires:
+      vars:
+        - name: ENV
+          enum: [dev, staging, prod]
+    cmds:
+      - task: tf:workspace
+        vars: {ENV: "{{.ENV}}"}
+      - TF_WORKSPACE={{.ENV}} terraform -chdir=infra apply -var-file=envs/{{.ENV}}.tfvars
 
   migrate:
     desc: Apply database migrations

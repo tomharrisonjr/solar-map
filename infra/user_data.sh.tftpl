@@ -1,0 +1,27 @@
+#!/bin/bash
+# First-boot provisioning for the solar-map host (rendered by Terraform's templatefile).
+set -euxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+# Ubuntu's own packages: Docker engine + Compose v2 plugin, git, automatic security updates.
+apt-get install -y docker.io docker-compose-v2 git unattended-upgrades
+systemctl enable --now docker
+usermod -aG docker ubuntu
+
+# SSH: keys only, no root login. (Lightsail already injects the key pair for `ubuntu`.)
+cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'SSHD'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+SSHD
+systemctl reload ssh
+
+# Reboot automatically when a security update requires it (at a quiet hour).
+cat > /etc/apt/apt.conf.d/52solar-map-reboot <<'APT'
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "09:00";
+APT
+
+# The repo is public; clone as the login user. Secrets (backend/.env) are added by hand.
+sudo -u ubuntu git clone ${repo_url} /home/ubuntu/solar-map

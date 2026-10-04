@@ -1,8 +1,16 @@
-# Used by docker-compose.prod.yml. SITE_ADDRESS comes from backend/.env:
-#   solar-map.tomharrisonjr.com  -> automatic Let's Encrypt certificate + HTTP->HTTPS redirect
-#   localhost                    -> Caddy's internal CA (for trying the stack locally)
-# Caddy sets X-Forwarded-Proto/-For itself, which BEHIND_PROXY relies on. Compression is
-# left to Django's GZip middleware.
-{$SITE_ADDRESS} {
+# Used by docker-compose.prod.yml. Both variables come from backend/.env via compose:
+#   SITE_ADDRESS   the public hostname: automatic Let's Encrypt certificate + HTTP->HTTPS
+#                  redirect. `localhost` uses Caddy's internal CA (for trying the stack locally).
+#   REDIRECT_FROM  optional second hostname served only to 301 to SITE_ADDRESS (e.g. the
+#                  env-specific name solar-map-prod.* -> solar-map.*). Compose defaults it to
+#                  SITE_ADDRESS, in which case the list below collapses to one name and no
+#                  request is redirected.
+# Redirecting here, before the proxy, means Django only ever sees SITE_ADDRESS (so its
+# ALLOWED_HOSTS and CSRF origin stay a single name). Caddy sets X-Forwarded-Proto/-For itself,
+# which BEHIND_PROXY relies on. Compression is left to Django's GZip middleware.
+{$SITE_ADDRESS}, {$REDIRECT_FROM} {
+	@elsewhere not host {$SITE_ADDRESS}
+	redir @elsewhere https://{$SITE_ADDRESS}{uri} permanent
+
 	reverse_proxy web:8000
 }

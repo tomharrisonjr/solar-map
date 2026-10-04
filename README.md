@@ -26,6 +26,20 @@ Install these first. Each row says how to check that it's installed.
 | **Git** 2.31 or newer                          | Cloning the repo; the Taskfile also uses it                                                                  | [git-scm.com/downloads](https://git-scm.com/downloads)                                                                                                                                                      | `git --version`          | Git 2.50                  |
 | **GNU coreutils** and **GNU sed** (macOS only) | Shell commands in the docs and in agent/contributor workflows assume GNU flags; macOS ships the BSD versions | `brew install coreutils gnu-sed` — installs with a `g` prefix (`gsed`, `gdate`, …), leaving the BSD tools alone. Not needed for `task setup`                                                                | `gsed --version`         | sed 4.10, coreutils 9.11  |
 
+Only if you manage the AWS hosting in [`infra/`](infra/) (not needed to run the app locally):
+
+| Tool          | What it's for                                        | Install                                                                                                                        | Check               | Tested with    |
+| ------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------- | -------------- |
+| **Terraform** | Defines the Lightsail host, static IP and DNS record | [developer.hashicorp.com/terraform/install](https://developer.hashicorp.com/terraform/install) — e.g. `brew install terraform` | `terraform version` | Terraform 1.15 |
+| **AWS CLI**   | Credentials (a named profile) for Terraform          | [AWS CLI install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)                         | `aws --version`     | AWS CLI 2      |
+
+Environments are Terraform workspaces (`dev`, `staging`, `prod`; settings in `infra/envs/<env>.tfvars`).
+Copy `infra/terraform.tfvars.example` to `infra/terraform.tfvars`, then `task tf:init` once and
+`task tf:plan ENV=prod` / `task tf:apply ENV=prod` (apply creates billable AWS resources).
+
+`task check` also runs `terraform fmt -check` and `terraform validate` when Terraform is installed
+(no AWS credentials needed), and skips them when it isn't.
+
 Also needed:
 
 - **Docker must be running** (start Docker Desktop, or the Docker service on Linux) before you run any command below.
