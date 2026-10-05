@@ -1,5 +1,14 @@
 terraform {
-  required_version = ">= 1.9"
+  required_version = ">= 1.10"
+
+  # State lives in S3 (bucket created by infra/bootstrap). bucket and region come from
+  # backend.hcl; credentials from AWS_PROFILE / the standard chain. Locking uses an S3 lock file
+  # next to the state object (no DynamoDB). Each workspace gets its own object under env:/.
+  backend "s3" {
+    key          = "solar-map/terraform.tfstate"
+    encrypt      = true
+    use_lockfile = true
+  }
 
   required_providers {
     aws = {

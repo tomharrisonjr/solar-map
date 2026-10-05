@@ -36,8 +36,13 @@ Only if you manage the AWS hosting in [`infra/`](infra/) (not needed to run the 
 Environments are Terraform workspaces (`dev`, `staging`, `prod`; settings in `infra/envs/<env>.tfvars`).
 Supply your own AWS profile, SSH IP and public key — copy `infra/terraform.tfvars.example` to
 `infra/terraform.tfvars`, or with [direnv](https://direnv.net) copy `infra/.envrc.example` to
-`infra/.envrc` (both are gitignored and the example documents each value) — then `task tf:init` once and
+`infra/.envrc` (both are gitignored and the example documents each value) — then `task tf:init` once per computer and
 `task tf:plan ENV=prod` / `task tf:apply ENV=prod` (apply creates billable AWS resources).
+
+Terraform state lives in a private S3 bucket (`solar-map-tfstate-<account-id>`, locked with S3 lock
+files, so no DynamoDB), which is how several computers share it: all you need is the same AWS
+credentials. A brand-new AWS account needs `task tf:bootstrap` once to create the bucket (then
+update `infra/backend.hcl` with its name).
 
 `task check` also runs `terraform fmt -check` and `terraform validate` when Terraform is installed
 (no AWS credentials needed), and skips them when it isn't.
