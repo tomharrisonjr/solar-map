@@ -13,6 +13,9 @@ locals {
 resource "aws_lightsail_key_pair" "this" {
   name       = "${local.name}-key"
   public_key = file(pathexpand(var.ssh_public_key_path))
+  lifecycle {
+    ignore_changes = [public_key]
+  }
 }
 
 resource "aws_lightsail_instance" "this" {
@@ -63,25 +66,32 @@ resource "aws_lightsail_instance_public_ports" "this" {
   instance_name = aws_lightsail_instance.this.name
 
   port_info {
-    protocol  = "tcp"
-    from_port = 22
-    to_port   = 22
-    cidrs     = [var.ssh_allowed_cidr]
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidrs      = [var.ssh_allowed_cidr]
+    ipv6_cidrs = []
     # Lightsail's console/CLI access (`aws lightsail get-instance-access-details`) uses temporary
     # keys, so a lost key or changed home IP never locks you out.
     cidr_list_aliases = ["lightsail-connect"]
   }
 
   port_info {
-    protocol  = "tcp"
-    from_port = 80
-    to_port   = 80
+    protocol          = "tcp"
+    from_port         = 80
+    to_port           = 80
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
 
   port_info {
-    protocol  = "tcp"
-    from_port = 443
-    to_port   = 443
+    protocol          = "tcp"
+    from_port         = 443
+    to_port           = 443
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
 }
 

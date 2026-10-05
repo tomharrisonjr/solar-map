@@ -107,6 +107,17 @@ tasks:
         vars: {ENV: "{{.ENV}}"}
       - TF_WORKSPACE={{.ENV}} terraform -chdir=infra apply -var-file=envs/{{.ENV}}.tfvars
 
+  tf:output:
+    desc: "Show an environment's Terraform outputs (IP, SSH command, ...): task tf:output ENV=dev [-- <name>]"
+    requires:
+      vars:
+        - name: ENV
+          enum: [dev, staging, prod]
+    cmds:
+      - task: tf:workspace
+        vars: {ENV: "{{.ENV}}"}
+      - TF_WORKSPACE={{.ENV}} terraform -chdir=infra output {{.CLI_ARGS}}
+
   migrate:
     desc: Apply database migrations
     cmds:

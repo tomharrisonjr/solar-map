@@ -58,6 +58,7 @@ task data:load   # (re)load USPVDB from the official URL; `-- <path-or-url>` to 
 task env         # create backend/.env from the example if missing (setup runs this)
 task venv        # backend/.venv from requirements-dev.txt, for editor import resolution only (setup runs this)
 task tf:plan ENV=prod   # Terraform plan for an environment (dev|staging|prod); `tf:apply` creates billable AWS resources
+task tf:output ENV=prod # show that environment's outputs (IP, SSH command); `-- <name>` for one value
 task tf:bootstrap  # once per AWS account: create the S3 bucket that holds Terraform state
 task tf:check    # terraform fmt -check + validate (part of `task check`; skipped if terraform isn't installed)
 task vscode      # add interpreter path + standard type checking to gitignored .vscode/settings.json (setup runs this)

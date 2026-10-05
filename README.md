@@ -37,7 +37,8 @@ Environments are Terraform workspaces (`dev`, `staging`, `prod`; settings in `in
 Supply your own AWS profile, SSH IP and public key — copy `infra/terraform.tfvars.example` to
 `infra/terraform.tfvars`, or with [direnv](https://direnv.net) copy `infra/.envrc.example` to
 `infra/.envrc` (both are gitignored and the example documents each value) — then `task tf:init` once per computer and
-`task tf:plan ENV=prod` / `task tf:apply ENV=prod` (apply creates billable AWS resources).
+`task tf:plan ENV=prod` / `task tf:apply ENV=prod` (apply creates billable AWS resources). `task tf:output ENV=prod` shows an environment's outputs
+(IP address, SSH command) at any time; add `-- <name>` for a single value.
 
 Terraform state lives in a private S3 bucket (`solar-map-tfstate-<account-id>`, locked with S3 lock
 files, so no DynamoDB), which is how several computers share it: all you need is the same AWS
