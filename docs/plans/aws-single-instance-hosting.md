@@ -12,7 +12,7 @@
 | ✅ Done | 2 | Production compose file and Caddy |
 | ✅ Done | 3 | Replace the OpenStreetMap basemap |
 | ✅ Done | 4 | Terraform: Lightsail instance, DNS and backups |
-| ⬜ Pending | 5 | Terraform remote state in S3 |
+| ✅ Done | 5 | Terraform remote state in S3 |
 | ⬜ Pending | 6 | First deploy, data load and docs |
 
 ## Context
@@ -141,7 +141,7 @@ live in committed `infra/envs/<env>.tfvars` (`subdomain`, which has no default s
 silently reuse another's hostname, and an optional `alias`, the public name that CNAMEs to it).
 `terraform output` prints `site_address` and `redirect_from`, the values for the server's `.env`; machine-specific values (`aws_profile`,
 `ssh_allowed_cidr`) stay in the gitignored `infra/terraform.tfvars`, shared by every env. State
-lands in `infra/terraform.tfstate.d/<env>/` (gitignored).
+started in `infra/terraform.tfstate.d/<env>/` (gitignored) and moved to S3 in step 5.
 
 Provider region is a variable (Lightsail is regional; default `us-east-1`). Credentials come from
 the standard AWS profile/env, never from files in the repo.
@@ -186,7 +186,7 @@ runs on the box. A `terraform destroy` + `apply` drill proves it's reproducible.
   **Not applied** — `terraform apply` (billable, ~$12/mo) is left for the user, and the live
   Let's Encrypt flow is untested until the instance exists.
 
-## Step 5 — Terraform remote state in S3
+## Step 5 — Terraform remote state in S3 (#49)
 
 State is shared across the user's computers, so it lives in S3. Only dev has local state so far
 (prod isn't applied), so the migration is small. Do this before the first prod `apply` in step 6.
@@ -219,6 +219,23 @@ State is shared across the user's computers, so it lives in S3. Only dev has loc
 Verify: `task check`; `terraform -chdir=infra/bootstrap plan` reviewed before apply; after
 migration `task tf:plan ENV=dev` shows no diff, the object exists in the bucket
 (`aws s3 ls s3://<bucket>/env:/dev/`), and a second concurrent `plan` is rejected by the lock.
+
+**As shipped:**
+
+- `infra/bootstrap/` (local state, gitignored) creates `solar-map-tfstate-<account-id>` in
+  `us-east-2`: versioned, AES256, public access blocked, TLS-only policy, `prevent_destroy`,
+  noncurrent versions expire after 90 days. Applied once: 6 resources.
+- The backend is `backend "s3"` in `infra/versions.tf` with `use_lockfile = true`;
+  `infra/backend.hcl` (committed) holds bucket and region. `required_version` is `>= 1.10`.
+  Credentials come from `AWS_PROFILE`, so the backend needs nothing extra beyond what the
+  provider already uses. The bootstrap root's own state stays local (not worth a second bucket);
+  it only needs to exist to apply changes to the bucket, and the bucket is recreatable.
+- `dev` migrated: object `env:/dev/solar-map/terraform.tfstate`; a refresh against it finds every
+  resource. (The plan's only diff was the firewall rule, from a changed home IP and IPv6
+  defaults, unrelated to the backend.)
+- `task tf:bootstrap`; `task tf:init` now passes `-backend-config=backend.hcl` and forwards
+  extra args (`task tf:init -- -migrate-state`); `tf:check` also validates the bootstrap root.
+- On another computer: install Terraform + AWS CLI, set `AWS_PROFILE`, `task tf:init`.
 
 ## Step 6 — First deploy, data load and docs
 

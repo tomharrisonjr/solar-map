@@ -37,7 +37,10 @@ tasks:
 
   tf:check:
     desc: terraform fmt -check + validate (skipped if terraform isn't installed)
-    # Needs no AWS credentials: validate runs with -backend=false and talks to nothing.
+    # Needs no AWS credentials: validate runs with -backend=false and talks to nothing. It uses its
+    # own data dir so an initialised S3 backend in infra/.terraform can't pull credentials in.
+    env:
+      TF_DATA_DIR: .terraform/check
     cmds:
       - |
         if ! command -v terraform >/dev/null 2>&1; then
@@ -47,11 +50,21 @@ tasks:
         terraform -chdir=infra fmt -check -recursive
         terraform -chdir=infra init -backend=false -input=false >/dev/null
         terraform -chdir=infra validate
+        terraform -chdir=infra/bootstrap init -backend=false -input=false >/dev/null
+        terraform -chdir=infra/bootstrap validate
+
+  # One-time (per AWS account): creates the S3 bucket that holds the main stack's state. Its own
+  # state stays local in infra/bootstrap/ (gitignored). Uses AWS_PROFILE / TF_VAR_aws_profile.
+  tf:bootstrap:
+    desc: Create the S3 bucket for Terraform state (once per AWS account)
+    cmds:
+      - terraform -chdir=infra/bootstrap init
+      - terraform -chdir=infra/bootstrap apply
 
   tf:init:
-    desc: Initialise Terraform in infra/
+    desc: Initialise Terraform in infra/ against the S3 state bucket (add `-- -migrate-state` to move local state)
     cmds:
-      - terraform -chdir=infra init
+      - terraform -chdir=infra init -backend-config=backend.hcl {{.CLI_ARGS}}
 
   tf:fmt:
     desc: Format the Terraform files
@@ -59,7 +72,7 @@ tasks:
       - terraform -chdir=infra fmt -recursive
 
   # One Terraform workspace per environment (dev, staging, prod); state for each lives in
-  # infra/terraform.tfstate.d/<env>/. ENV picks the workspace (via TF_WORKSPACE, so the
+  # the S3 bucket (key env:/<env>/solar-map/terraform.tfstate). ENV picks the workspace (via TF_WORKSPACE, so the
   # selection never lingers in local files) and infra/envs/<ENV>.tfvars. Machine-specific values
   # (profile, SSH CIDR) live in the gitignored infra/terraform.tfvars, shared by all envs.
   tf:workspace:
