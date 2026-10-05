@@ -12,7 +12,8 @@
 | ✅ Done | 2 | Production compose file and Caddy |
 | ✅ Done | 3 | Replace the OpenStreetMap basemap |
 | ✅ Done | 4 | Terraform: Lightsail instance, DNS and backups |
-| ⬜ Pending | 5 | First deploy, data load and docs |
+| ⬜ Pending | 5 | Terraform remote state in S3 |
+| ⬜ Pending | 6 | First deploy, data load and docs |
 
 ## Context
 
@@ -52,8 +53,9 @@ Decisions (2026-10-04):
   `solar-map.tomharrisonjr.com` (a CNAME to `solar-map-prod.tomharrisonjr.com`), and the
   env-specific name only 301-redirects to it. Envs without an alias just serve their own name. Only prod is expected to be applied for now; dev/staging cost the same
   ~$12/mo each, so create them only when needed.
-- **Terraform state is local and gitignored** (solo project, one small stack, no bootstrap
-  step). Moving to an S3 backend later is a one-line `terraform init -migrate-state`.
+- **Terraform state starts local and gitignored** (step 4), then moves to a private S3 bucket
+  in step 5 (2026-10-05) because the stack is managed from several computers. Locking uses
+  S3-native lock files (`use_lockfile`, Terraform >= 1.10), so no DynamoDB table.
 
 Still open:
 
@@ -122,7 +124,7 @@ New `infra/` directory (Terraform, `required_version` and provider versions pinn
 - `aws_lightsail_instance`: 2 GB bundle, Ubuntu LTS blueprint, an SSH key pair, and a
   `user_data` script that installs Docker + Compose v2, enables unattended security upgrades,
   disables root and password SSH login, and clones the repo. It does **not** write secrets: the
-  prod `backend/.env` is created by hand in step 5 so no secret lands in Terraform state.
+  prod `backend/.env` is created by hand in step 6 so no secret lands in Terraform state.
 - `aws_lightsail_static_ip` + `aws_lightsail_static_ip_attachment`: the address that survives
   instance rebuilds.
 - `aws_lightsail_instance_public_ports`: 80 and 443 open to the world, 22 restricted to a
@@ -184,7 +186,41 @@ runs on the box. A `terraform destroy` + `apply` drill proves it's reproducible.
   **Not applied** — `terraform apply` (billable, ~$12/mo) is left for the user, and the live
   Let's Encrypt flow is untested until the instance exists.
 
-## Step 5 — First deploy, data load and docs
+## Step 5 — Terraform remote state in S3
+
+State is shared across the user's computers, so it lives in S3. Only dev has local state so far
+(prod isn't applied), so the migration is small. Do this before the first prod `apply` in step 6.
+
+- **Bootstrap root `infra/bootstrap/`** (its own `terraform` root, local state): the
+  chicken-and-egg bucket can't live in the stack that uses it. It creates one S3 bucket named
+  `solar-map-tfstate-<account-id>` (names are global; the account id keeps it unique) with
+  versioning on, public access fully blocked, SSE (AES256) default encryption, a
+  `prevent_destroy` lifecycle, a bucket policy denying non-TLS requests, and a lifecycle rule
+  expiring noncurrent versions after ~90 days. Same region/profile variables as the main stack;
+  output the bucket name. After creating the bucket, its own tiny state may be migrated into it
+  under key `bootstrap/terraform.tfstate` (optional; document the choice).
+- **Backend in `infra/versions.tf`:** `backend "s3" {}` with `key = "solar-map/terraform.tfstate"`,
+  `use_lockfile = true`, `encrypt = true`; bucket/region/profile are partial config in a committed
+  `infra/backend.hcl` (bucket and region aren't secret; profile stays out, supplied via
+  `AWS_PROFILE` or `-backend-config`). Raise `required_version` to `>= 1.10` (S3 lock files).
+  Non-default workspaces are stored by the backend at `env:/<workspace>/<key>`, so the
+  per-env separation and the refused `default` workspace carry over unchanged.
+- **Migrate:** `terraform init -backend-config=backend.hcl -migrate-state` for the existing
+  `dev` workspace (answer yes to copying each workspace's state); confirm with `terraform plan`
+  showing no changes, then delete the local `terraform.tfstate.d/` copies.
+- **Taskfile:** `tf:bootstrap` (init + apply the bootstrap root; billable-free but creates AWS
+  resources, so the user approves), `tf:init` passes `-backend-config=backend.hcl`, and
+  `tf:check` uses `init -backend=false` as now. Update the `tf:plan/apply` comments about state
+  location.
+- **Docs:** README (new-computer setup: AWS credentials, `task tf:init`), `AGENTS.md` layout
+  (`infra/bootstrap/`), and this plan's step 4 text about state location; add `infra/bootstrap`
+  to `tf:check` and to `.gitignore` rules as needed (`.terraform/` is already ignored).
+
+Verify: `task check`; `terraform -chdir=infra/bootstrap plan` reviewed before apply; after
+migration `task tf:plan ENV=dev` shows no diff, the object exists in the bucket
+(`aws s3 ls s3://<bucket>/env:/dev/`), and a second concurrent `plan` is rejected by the lock.
+
+## Step 6 — First deploy, data load and docs
 
 - SSH to the instance (cloned by Terraform's `user_data`), create prod `backend/.env`, then `docker compose --env-file
   backend/.env -f docker-compose.prod.yml up -d --build`, `migrate`, `load_uspvdb` (the
@@ -203,13 +239,12 @@ runs on the box. A `terraform destroy` + `apply` drill proves it's reproducible.
 
 ## Verification
 
-`task check` for the code changes; then the live checks in step 5, plus a rebuild drill: destroy
+`task check` for the code changes; then the live checks in step 6, plus a rebuild drill: destroy
 the DB volume on the instance, `migrate` + `load_uspvdb`, confirm 6,611 facilities.
 
 ## Deferred to a later pass
 
 - CI-driven deploys (GitHub Actions over SSH or via ECR).
-- Remote Terraform state in S3 with locking (workspaces then get per-env state keys automatically).
 - Uptime monitoring/alerting (e.g. Route 53 health check or a free external pinger).
 - Moving to RDS PostGIS + ECS Express Mode if traffic or uptime needs grow.
 - A CDN in front of `/tiles/` if tile load warrants it.
