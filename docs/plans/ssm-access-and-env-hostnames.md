@@ -2,15 +2,15 @@
 
 - GitHub Issue: #51
 - Date: 2026-10-05
-- Status: Draft
+- Status: In Progress
 
 ## Steps
 
 | Status | # | Step |
 |--------|---|------|
-| ⬜ Pending | 1 | Env hostnames: bare prod, subdomains for dev/staging |
-| ⬜ Pending | 2 | SSM access: hybrid activation, agent in user_data, close port 22 |
-| ⬜ Pending | 3 | Tasks and docs: `task ssm`, `tf:rebuild`, README/AGENTS/plan updates |
+| 🔄 In Progress | 1 | Env hostnames: bare prod, subdomains for dev/staging |
+| 🔄 In Progress | 2 | SSM access: hybrid activation, agent in user_data, close port 22 |
+| 🔄 In Progress | 3 | Tasks and docs: `task ssm`, `tf:rebuild`, README/AGENTS/plan updates |
 | ⬜ Pending | 4 | Rebuild dev and verify |
 
 ## Context
@@ -62,13 +62,14 @@ All in `infra/main.tf` (+ `user_data.sh.tftpl`, `variables.tf`, tfvars files):
 
 - `aws_iam_role` assumed by `ssm.amazonaws.com`, with `AmazonSSMManagedInstanceCore` attached.
   Named from `local.name`, so each env gets its own role.
-- `aws_ssm_activation` (`iam_role`, `registration_limit = 5`, default 24h expiry, tags
-  `Name = local.name`, `Environment`) — tags let the task find the `mi-…` instance id.
-- `user_data.sh.tftpl`: pass `activation_id`, `activation_code`, `aws_region`; install
-  `amazon-ssm-agent` (snap, classic), register with `amazon-ssm-agent -register -code -id
-  -region`, restart the agent. Put the agent install **before** anything that can fail, so a later
-  failure still leaves a shell. Keep the bash re-exec guard. Verify the exact snap/register
-  commands against the current AWS hybrid-activation docs while implementing.
+- `aws_ssm_activation` (`iam_role`, `registration_limit = 5`, default 24h expiry, tag
+  `Name`). SSM can't filter nodes by tag, so `task ssm` finds the node by its per-env role name
+  (`describe-instance-information --filters Key=IamRole,...`).
+- `user_data.sh.tftpl`: pass `activation_id`, `activation_code`, `aws_region`; run AWS's
+  `ssm-setup-cli -register` (downloaded from the regional `amazon-ssm-<region>` bucket, arch from
+  `dpkg`), which installs the agent and registers it. Do this **first**, with `set +x` so the code
+  stays out of the cloud-init log, so a later failure still leaves a shell. Keep the bash re-exec
+  guard.
 - Activation code/ID end up in `user_data` and state: short-lived, registration-only, not
   app secrets (app secrets stay in the hand-made `backend/.env`). Note this in a comment.
 - Delete `aws_lightsail_key_pair.this`, `key_pair_name`, the port-22 `port_info` block,
