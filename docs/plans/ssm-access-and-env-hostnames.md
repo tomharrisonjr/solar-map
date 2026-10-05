@@ -2,16 +2,16 @@
 
 - GitHub Issue: #51
 - Date: 2026-10-05
-- Status: In Progress
+- Status: Complete
 
 ## Steps
 
 | Status | # | Step |
 |--------|---|------|
-| 🔄 In Progress | 1 | Env hostnames: bare prod, subdomains for dev/staging |
-| 🔄 In Progress | 2 | SSM access: hybrid activation, agent in user_data, close port 22 |
-| 🔄 In Progress | 3 | Tasks and docs: `task ssm`, `tf:rebuild`, README/AGENTS/plan updates |
-| ⬜ Pending | 4 | Rebuild dev and verify |
+| ✅ Done | 1 | Env hostnames: bare prod, subdomains for dev/staging |
+| ✅ Done | 2 | SSM access: hybrid activation, agent in user_data, close port 22 |
+| ✅ Done | 3 | Tasks and docs: `task ssm`, `tf:rebuild`, README/AGENTS/plan updates |
+| ✅ Done | 4 | Rebuild dev and verify |
 
 ## Context
 
@@ -109,7 +109,31 @@ All in `infra/main.tf` (+ `user_data.sh.tftpl`, `variables.tf`, tfvars files):
    `migrate`, `load_uspvdb`; check 6,611 facilities.
 6. Over HTTPS at `dev.solar-map.tomharrisonjr.com`: cert issued, HTTP→HTTPS, `/`, a tile,
    `/api/facilities/nearest/`, `/admin/` redirect; basemap tiles load (Stadia registration).
-7. `nmap`/`nc` to port 22 times out; `task check` passes (ruff, tests, `terraform fmt/validate`).
+7. Port 22 times out (check with a Python socket and a 5 s timeout: macOS `nc -w` ignores its
+   timeout while connecting and waits ~75 s); `task check` passes (ruff, tests, `terraform fmt/validate`).
+
+## As shipped
+
+Everything above landed as planned, with these differences found by the dev rebuild drill:
+
+- `task ssm` finds the node by the per-env IAM role name (`IamRole` filter), not by tag: SSM can't
+  filter nodes by tag. It takes the node that **pinged most recently**, because a destroyed box's
+  registration keeps reporting `Online` for a while. The command is passed in an env var and the
+  JSON built in Python, since Task re-quotes `-- "a b"` and corrupted a hand-built JSON string.
+  Use `task ssm ENV=dev -- docker ps` (unquoted).
+- `user_data` aborted on `systemctl reload ssh`: Ubuntu 24.04 starts sshd on demand (socket
+  activation) and port 22 is closed, so the service is inactive and `reload` fails under `set -e`.
+  It now uses `try-reload-or-restart`. `cloud-init status` reported `error` while
+  `cloud-init analyze` showed nothing wrong; the cause is only in `/var/log/cloud-init-output.log`.
+  SSM registration runs first, so the box stayed reachable while it failed late.
+- Replacing the instance left it on Lightsail's default firewall (22 and 80 open, 443 closed):
+  `aws_lightsail_instance_public_ports` attaches by instance *name*, so Terraform saw no change.
+  It now has `replace_triggered_by = [aws_lightsail_instance.this.id]`.
+- Verified on dev at `dev.solar-map.tomharrisonjr.com`: certificate, HTTP to HTTPS, `/`, a tile,
+  `nearest`, `/admin/` redirect, 6,611 facilities, Stadia tiles for the dev and prod referers,
+  port 22 dropped, 80 and 443 open.
+- Stale SSM registrations from rebuilt boxes stay listed offline; remove with
+  `aws ssm deregister-managed-instance --instance-id mi-...`.
 
 ## Out of scope
 
