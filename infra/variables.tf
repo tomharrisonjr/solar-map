@@ -17,35 +17,8 @@ variable "domain" {
 }
 
 variable "subdomain" {
-  description = "Record name within the zone; the site is served at <subdomain>.<domain>. Set per environment in envs/<env>.tfvars (no default, so an environment can't silently reuse another's hostname)."
+  description = "Record name within the zone (may contain dots); the site is served at <subdomain>.<domain>. Set per environment in envs/<env>.tfvars (no default, so an environment can't silently reuse another's hostname): \"solar-map\" for prod, \"dev.solar-map\" etc. for the rest."
   type        = string
-}
-
-variable "alias" {
-  description = "Optional friendlier public name (a record name in the zone, e.g. \"solar-map\"). When set it is the site's real hostname (SITE_ADDRESS) and CNAMEs to <subdomain>.<domain>, which then only redirects to it."
-  type        = string
-  default     = null
-
-  validation {
-    condition     = var.alias == null || var.alias != var.subdomain
-    error_message = "alias can't equal subdomain: the subdomain already has the A record."
-  }
-}
-
-variable "ssh_public_key_path" {
-  description = "Path to the public key file allowed to SSH in as `ubuntu`."
-  type        = string
-  default     = "~/.ssh/id_ed25519.pub"
-}
-
-variable "ssh_allowed_cidr" {
-  description = "CIDR allowed to reach SSH (port 22), e.g. your home IP as 203.0.113.7/32"
-  type        = string
-
-  validation {
-    condition     = can(cidrhost(var.ssh_allowed_cidr, 0)) && var.ssh_allowed_cidr != "0.0.0.0/0"
-    error_message = "Must be a valid IPv4 CIDR and must not be 0.0.0.0/0"
-  }
 }
 
 variable "bundle_id" {

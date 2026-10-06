@@ -32,13 +32,23 @@ Only if you manage the AWS hosting in [`infra/`](infra/) (not needed to run the 
 | ------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------- | -------------- |
 | **Terraform** | Defines the Lightsail host, static IP and DNS record | [developer.hashicorp.com/terraform/install](https://developer.hashicorp.com/terraform/install) — e.g. `brew install terraform` | `terraform version` | Terraform 1.15 |
 | **AWS CLI**   | Credentials (a named profile) for Terraform          | [AWS CLI install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)                         | `aws --version`     | AWS CLI 2      |
+| **Session Manager plugin** | Lets the AWS CLI open a shell on the instance (`task ssm`) | [AWS install guide](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) — e.g. `brew install --cask session-manager-plugin` | `session-manager-plugin` | 1.2 |
 
 Environments are Terraform workspaces (`dev`, `staging`, `prod`; settings in `infra/envs/<env>.tfvars`).
-Supply your own AWS profile, SSH IP and public key — copy `infra/terraform.tfvars.example` to
+Supply your own AWS profile — copy `infra/terraform.tfvars.example` to
 `infra/terraform.tfvars`, or with [direnv](https://direnv.net) copy `infra/.envrc.example` to
 `infra/.envrc` (both are gitignored and the example documents each value) — then `task tf:init` once per computer and
 `task tf:plan ENV=prod` / `task tf:apply ENV=prod` (apply creates billable AWS resources). `task tf:output ENV=prod` shows an environment's outputs
-(IP address, SSH command) at any time; add `-- <name>` for a single value.
+(IP address, site address) at any time; add `-- <name>` for a single value.
+
+Hostnames: prod is `solar-map.tomharrisonjr.com`; the other environments sit under it
+(`dev.solar-map.…`, `staging.solar-map.…`), so one Stadia registration of the prod name covers all.
+
+There is no SSH and no inbound port 22. `task ssm ENV=dev` opens a shell on the instance through
+AWS Systems Manager, authorised purely by your IAM permissions (`task ssm ENV=dev -- docker ps` runs
+one command instead). `task tf:rebuild ENV=dev` destroys and recreates an environment's instance.
+Make sure `AWS_PROFILE` is the account that owns the infrastructure: another account's profile gets
+a 403 on the state bucket.
 
 Terraform state lives in a private S3 bucket (`solar-map-tfstate-<account-id>`, locked with S3 lock
 files, so no DynamoDB), which is how several computers share it: all you need is the same AWS

@@ -1,21 +1,12 @@
 locals {
   # One workspace per environment; every resource is named after it so they never collide.
-  # Lightsail names are unique across resource types within a region, hence the -key/-ip suffixes.
+  # Lightsail names are unique across resource types within a region, hence the -ip suffix.
   environments = ["dev", "staging", "prod"]
   env          = terraform.workspace
   name         = "solar-map-${local.env}"
-  # The env-specific name always exists (A record). With an alias, the alias is the public
-  # name and the env-specific one only redirects to it.
-  fqdn        = "${var.subdomain}.${var.domain}"
-  public_fqdn = var.alias == null ? local.fqdn : "${var.alias}.${var.domain}"
-}
-
-resource "aws_lightsail_key_pair" "this" {
-  name       = "${local.name}-key"
-  public_key = file(pathexpand(var.ssh_public_key_path))
-  lifecycle {
-    ignore_changes = [public_key]
-  }
+  # The site's one public name (SITE_ADDRESS): prod is the bare "solar-map", the others sit under
+  # it ("dev.solar-map"), so a single Stadia registration of the prod name covers every env.
+  fqdn = "${var.subdomain}.${var.domain}"
 }
 
 resource "aws_lightsail_instance" "this" {
@@ -23,12 +14,16 @@ resource "aws_lightsail_instance" "this" {
   availability_zone = "${var.aws_region}a"
   blueprint_id      = "ubuntu_24_04"
   bundle_id         = var.bundle_id
-  key_pair_name     = aws_lightsail_key_pair.this.name
 
-  # Runs once on first boot. Installs Docker and clones the repo; it deliberately writes no
-  # secrets (they would end up in Terraform state): create backend/.env by hand afterwards.
+  # Runs once on first boot. Registers the box with SSM (the only way in: there is no SSH), then
+  # installs Docker and clones the repo. It deliberately writes no app secrets (they would end up
+  # in Terraform state): create backend/.env by hand afterwards. The SSM activation id/code do land
+  # in state, but they only allow a machine to register against this env's role, and expire.
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    repo_url = var.repo_url
+    repo_url        = var.repo_url
+    aws_region      = var.aws_region
+    activation_id   = aws_ssm_activation.this.id
+    activation_code = aws_ssm_activation.this.activation_code
   })
 
   # Daily snapshot, last 7 kept (Lightsail's AutoSnapshot cadence is fixed at daily). The
@@ -40,7 +35,8 @@ resource "aws_lightsail_instance" "this" {
   }
 
   # Editing user_data or the blueprint would replace the box (and its data); don't do that
-  # by accident. Rebuild deliberately with `terraform apply -replace=aws_lightsail_instance.this`.
+  # by accident. Rebuild deliberately with `task tf:rebuild ENV=<env>`, which also replaces the
+  # SSM activation: its code expires, so a new box needs a fresh one.
   lifecycle {
     ignore_changes = [user_data, blueprint_id]
 
@@ -62,18 +58,17 @@ resource "aws_lightsail_static_ip_attachment" "this" {
   instance_name  = aws_lightsail_instance.this.name
 }
 
+# Web only. There is deliberately no port 22: shell access is SSM Session Manager (`task ssm`),
+# authorised by IAM. Break-glass if the agent won't register: open 22 temporarily in the Lightsail
+# console, then re-apply to close it again.
 resource "aws_lightsail_instance_public_ports" "this" {
   instance_name = aws_lightsail_instance.this.name
 
-  port_info {
-    protocol   = "tcp"
-    from_port  = 22
-    to_port    = 22
-    cidrs      = [var.ssh_allowed_cidr]
-    ipv6_cidrs = []
-    # Lightsail's console/CLI access (`aws lightsail get-instance-access-details`) uses temporary
-    # keys, so a lost key or changed home IP never locks you out.
-    cidr_list_aliases = ["lightsail-connect"]
+  # The rules attach by instance *name*, which survives a rebuild, so Terraform would see no change
+  # and leave the new box on Lightsail's default firewall (22 and 80 open, 443 closed). Re-apply
+  # them whenever the instance itself is replaced.
+  lifecycle {
+    replace_triggered_by = [aws_lightsail_instance.this.id]
   }
 
   port_info {
@@ -108,14 +103,39 @@ resource "aws_route53_record" "site" {
   records = [aws_lightsail_static_ip.this.ip_address]
 }
 
-# Optional friendlier public name: a CNAME to the env-specific record, so the IP lives in one
-# place. The app serves this name; the env-specific one redirects to it (see the Caddyfile).
-resource "aws_route53_record" "alias" {
-  count = var.alias == null ? 0 : 1
+# Shell access without SSH. Lightsail instances can't take an instance profile, so they join
+# Systems Manager as "hybrid" managed nodes: the activation below lets the agent on the box
+# register itself against this role, after which `aws ssm start-session` works with plain IAM
+# permissions and no inbound ports. Standard-tier activations are free.
+data "aws_iam_policy_document" "ssm_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ssm.amazonaws.com"]
+    }
+  }
+}
 
-  zone_id = data.aws_route53_zone.this.zone_id
-  name    = "${var.alias}.${var.domain}"
-  type    = "CNAME"
-  ttl     = 300
-  records = [aws_route53_record.site.fqdn]
+resource "aws_iam_role" "ssm" {
+  name               = "${local.name}-ssm"
+  assume_role_policy = data.aws_iam_policy_document.ssm_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "ssm" {
+  role       = aws_iam_role.ssm.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# `task ssm` finds the registered node by this env's role name (SSM can't filter nodes by tag).
+# Expires after 24h by default, so it must be replaced together with the instance (tf:rebuild).
+resource "aws_ssm_activation" "this" {
+  name               = local.name
+  description        = "Registers the ${local.name} Lightsail instance with Systems Manager"
+  iam_role           = aws_iam_role.ssm.id
+  registration_limit = 5
+  tags = {
+    Name = local.name
+  }
+  depends_on = [aws_iam_role_policy_attachment.ssm]
 }

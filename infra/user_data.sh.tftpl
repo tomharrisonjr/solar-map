@@ -1,7 +1,20 @@
 #!/bin/bash
 # First-boot provisioning for the solar-map host (rendered by Terraform's templatefile).
+# Lightsail prepends its own `#!/bin/sh` bootstrap to user data, so the shebang above isn't line 1
+# and this runs under dash (no `pipefail`). Re-exec under bash so it works either way.
+if [ -z "$${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
+
+# Register with SSM first: it is the only way into this box (no SSH), so it must not depend on any
+# later step succeeding. ssm-setup-cli installs the agent and registers it with the activation.
+arch="$(dpkg --print-architecture)"
+curl -fsSL "https://amazon-ssm-${aws_region}.s3.${aws_region}.amazonaws.com/latest/debian_$${arch}/ssm-setup-cli" -o /tmp/ssm-setup-cli
+chmod +x /tmp/ssm-setup-cli
+set +x # keep the activation code out of the cloud-init log
+/tmp/ssm-setup-cli -register -activation-id "${activation_id}" -activation-code "${activation_code}" -region "${aws_region}"
+set -x
+rm -f /tmp/ssm-setup-cli
 
 apt-get update
 # Ubuntu's own packages: Docker engine + Compose v2 plugin, git, automatic security updates.
@@ -9,13 +22,17 @@ apt-get install -y docker.io docker-compose-v2 git unattended-upgrades
 systemctl enable --now docker
 usermod -aG docker ubuntu
 
-# SSH: keys only, no root login. (Lightsail already injects the key pair for `ubuntu`.)
+# Defence in depth: port 22 is closed at the Lightsail firewall, but keep sshd locked down too
+# (keys only, no root login) in case it is ever opened for break-glass access.
 cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'SSHD'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no
 SSHD
-systemctl reload ssh
+# Ubuntu 24.04 starts sshd on demand (socket activation) and port 22 is closed, so it is usually
+# not running: a plain `reload` would fail and, under `set -e`, abort the rest of this script.
+# try-reload-or-restart is a no-op for an inactive unit; the drop-in is read whenever sshd starts.
+systemctl try-reload-or-restart ssh
 
 # Reboot automatically when a security update requires it (at a quiet hour).
 cat > /etc/apt/apt.conf.d/52solar-map-reboot <<'APT'

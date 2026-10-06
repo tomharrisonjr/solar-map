@@ -166,7 +166,8 @@ creates billable resources, so the user runs or approves it); after apply confir
 `dig solar-map.tomharrisonjr.com` returns the static IP, SSH works, and `docker compose version`
 runs on the box. A `terraform destroy` + `apply` drill proves it's reproducible.
 
-**As shipped:**
+**As shipped** (SSH access and the prod alias described here were later replaced; see
+`docs/plans/ssm-access-and-env-hostnames.md`, #51):
 
 - `infra/` as planned, plus workspaces (`dev`/`staging`/`prod`, `envs/<env>.tfvars`, the `default`
   workspace refused by a precondition) and an optional `alias`. Prod: A record
@@ -239,19 +240,22 @@ migration `task tf:plan ENV=dev` shows no diff, the object exists in the bucket
 
 ## Step 6 — First deploy, data load and docs
 
-- SSH to the instance (cloned by Terraform's `user_data`), create prod `backend/.env`, then `docker compose --env-file
-  backend/.env -f docker-compose.prod.yml up -d --build`, `migrate`, `load_uspvdb` (the
-  default source downloads the official zip).
-- **Alias handling (done in step 4's branch):** the `Caddyfile` serves `SITE_ADDRESS, REDIRECT_FROM`
-  and 301-redirects any request whose host isn't `SITE_ADDRESS`, keeping path and query, before
-  the proxy, so Django still sees a single host and `ALLOWED_HOSTS`/CSRF origin are unchanged.
-  `REDIRECT_FROM` is optional (compose defaults it to `SITE_ADDRESS`). On the server, set
-  `SITE_ADDRESS` and `REDIRECT_FROM` from `terraform output`, and register **both** hostnames in
-  the Stadia dashboard (the redirect makes users land on the public name, but be safe).
+Builds on `docs/plans/ssm-access-and-env-hostnames.md` (#51): shell access is SSM (`task ssm
+ENV=<env>`, no SSH), and hostnames are `solar-map.tomharrisonjr.com` for prod with
+`dev.solar-map.*` / `staging.solar-map.*` beneath it. The dev deploy was done by hand once to
+prove the stack; this step repeats it for prod and writes it down.
+
+- `task tf:apply ENV=prod`, then `task ssm ENV=prod`: the repo is already cloned by `user_data`.
+  Create `backend/.env` on the host (`SITE_ADDRESS` from `task tf:output ENV=prod -- site_address`;
+  `SECRET_KEY` and `DATABASE_PASSWORD` generated there with `openssl rand`, never via Terraform),
+  then `docker compose --env-file backend/.env -f docker-compose.prod.yml up -d --build`,
+  `migrate`, `load_uspvdb` (the default source downloads the official zip).
+- Register `solar-map.tomharrisonjr.com` in the Stadia dashboard; its subdomains are covered.
 - Verify over HTTPS: map renders, tiles load, `/api/facilities/nearest/?lat=…&lon=…` works,
   `/admin/` reachable, HTTP redirects to HTTPS.
-- Write `docs/deploy.md` (Terraform usage, deploy/update routine, refreshing data, restoring from
-  snapshot); link it from `README.md`; update `docs/requirements.md` and `AGENTS.md` layout.
+- Write `docs/deploy.md` (Terraform usage, deploy/update routine over `task ssm`, refreshing data,
+  `tf:rebuild`, restoring from snapshot); link it from `README.md`; update `docs/requirements.md`
+  and `AGENTS.md` layout.
 - Set this plan's `Status` to `Complete`.
 
 ## Verification

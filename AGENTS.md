@@ -16,9 +16,8 @@ README.md              getting started for humans: prerequisites, `task setup`, 
 Taskfile.yml           dev workflow: setup/data:load/check/migrate, worktree new/rm/list (`task --list`)
 docker-compose.prod.yml  single-host production stack: Caddy (TLS) + gunicorn web + PostGIS; configured
                        by `backend/.env` via `--env-file` (see the header comment)
-Caddyfile              reverse proxy for the prod stack; serves `SITE_ADDRESS` and 301-redirects the
-                       optional `REDIRECT_FROM` hostname to it
-infra/                 Terraform for the AWS host (Lightsail + static IP + Route 53); one workspace per
+Caddyfile              reverse proxy for the prod stack; serves `SITE_ADDRESS` (automatic TLS)
+infra/                 Terraform for the AWS host (Lightsail + static IP + Route 53 + SSM access); one workspace per
                        environment (dev/staging/prod), settings in `envs/<env>.tfvars`; state in an S3 bucket
                        (`backend.hcl`), created once by `infra/bootstrap/`
 .env.example            docker-compose port variables (DB_PORT, WEB_PORT); copy to .env (gitignored)
@@ -58,7 +57,9 @@ task data:load   # (re)load USPVDB from the official URL; `-- <path-or-url>` to 
 task env         # create backend/.env from the example if missing (setup runs this)
 task venv        # backend/.venv from requirements-dev.txt, for editor import resolution only (setup runs this)
 task tf:plan ENV=prod   # Terraform plan for an environment (dev|staging|prod); `tf:apply` creates billable AWS resources
-task tf:output ENV=prod # show that environment's outputs (IP, SSH command); `-- <name>` for one value
+task tf:output ENV=prod # show that environment's outputs (IP, site address); `-- <name>` for one value
+task tf:rebuild ENV=dev # destroy + recreate an environment's instance (wipes the box; billable)
+task ssm ENV=dev        # shell on the instance via SSM Session Manager (there is no SSH); `-- <cmd>` runs one command
 task tf:bootstrap  # once per AWS account: create the S3 bucket that holds Terraform state
 task tf:check    # terraform fmt -check + validate (part of `task check`; skipped if terraform isn't installed)
 task vscode      # add interpreter path + standard type checking to gitignored .vscode/settings.json (setup runs this)

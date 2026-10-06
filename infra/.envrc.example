@@ -3,9 +3,5 @@
 export AWS_PROFILE=your-aws-profile
 export ENV=dev  # default environment for `task tf:*` (dev|staging|prod)
 
-# SSH is only open to your current IP; this looks it up each time direnv loads (re-enter the
-# directory after your IP changes, then apply to update the firewall).
-export TF_VAR_ssh_allowed_cidr="$(curl -s https://checkip.amazonaws.com)/32"
-export TF_VAR_ssh_public_key_path="~/.ssh/id_ed25519.pub"
 export TF_VAR_aws_profile="$AWS_PROFILE"
 export TF_VAR_aws_region="us-east-2"

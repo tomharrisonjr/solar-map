@@ -108,7 +108,7 @@ tasks:
       - TF_WORKSPACE={{.ENV}} terraform -chdir=infra apply -var-file=envs/{{.ENV}}.tfvars
 
   tf:output:
-    desc: "Show an environment's Terraform outputs (IP, SSH command, ...): task tf:output ENV=dev [-- <name>]"
+    desc: "Show an environment's Terraform outputs (IP, site address, ...): task tf:output ENV=dev [-- <name>]"
     requires:
       vars:
         - name: ENV
@@ -117,6 +117,50 @@ tasks:
       - task: tf:workspace
         vars: {ENV: "{{.ENV}}"}
       - TF_WORKSPACE={{.ENV}} terraform -chdir=infra output {{.CLI_ARGS}}
+
+  # A rebuilt instance needs a fresh SSM activation (the old code expires after 24h and user_data
+  # only runs on first boot), so both resources are replaced together. The old box's SSM
+  # registration lingers as an offline node; `task ssm` ignores it, and it can be removed with
+  # `aws ssm deregister-managed-instance --instance-id mi-...`.
+  tf:rebuild:
+    desc: "Destroy and recreate an environment's instance — wipes the box, billable: task tf:rebuild ENV=dev"
+    requires:
+      vars:
+        - name: ENV
+          enum: [dev, staging, prod]
+    cmds:
+      - task: tf:workspace
+        vars: {ENV: "{{.ENV}}"}
+      - TF_WORKSPACE={{.ENV}} terraform -chdir=infra apply -var-file=envs/{{.ENV}}.tfvars -replace=aws_lightsail_instance.this -replace=aws_ssm_activation.this
+
+  # There is no SSH: access is SSM Session Manager, authorised by IAM. Needs the AWS CLI and the
+  # Session Manager plugin (README). Each env's node registers under its own role, so the role
+  # name picks the instance. A destroyed box's registration keeps reporting Online for a while, so
+  # take the node that pinged most recently rather than the first Online one.
+  # Opens a login shell as `ubuntu` (SSM's default user is `ssm-user`); `-- <command>` runs
+  # that instead, e.g. `task ssm ENV=dev -- docker ps`.
+  ssm:
+    desc: "Open a shell on an environment's instance via SSM (no SSH): task ssm ENV=dev [-- <command>]"
+    requires:
+      vars:
+        - name: ENV
+          enum: [dev, staging, prod]
+    # The command travels in an env var and Python builds the JSON, so no shell-quoting layer
+    # (Task re-quotes `-- "a b"`) can corrupt it. `sudo -iu ubuntu <args>` runs <args> in a login shell.
+    env:
+      SSM_COMMAND: "sudo -iu ubuntu {{.CLI_ARGS}}"
+    cmds:
+      - |
+        id=$(aws ssm describe-instance-information --region us-east-2 \
+          --filters "Key=IamRole,Values=solar-map-{{.ENV}}-ssm" "Key=PingStatus,Values=Online" \
+          --query 'max_by(InstanceInformationList, &LastPingDateTime).InstanceId' --output text)
+        if [ -z "$id" ] || [ "$id" = None ]; then
+          echo "No online SSM node for {{.ENV}}: is the instance up, and is AWS_PROFILE the personal account?" >&2
+          exit 1
+        fi
+        params=$(python3 -c 'import json, os; print(json.dumps({"command": [os.environ["SSM_COMMAND"]]}))')
+        aws ssm start-session --region us-east-2 --target "$id" \
+          --document-name AWS-StartInteractiveCommand --parameters "$params"
 
   migrate:
     desc: Apply database migrations
