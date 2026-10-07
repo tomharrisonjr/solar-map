@@ -211,6 +211,32 @@ class LoadUspvdbCommandTests(TestCase):
         self.assertIn("uspvdb_v9_9_20990101.geojson", out.getvalue())
         self.assertIn("Please cite: Fujita", out.getvalue())
 
+    def test_if_empty_loads_into_an_empty_database(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "uspvdb.geojson"
+            path.write_bytes(self._collection_bytes(1, 2))
+
+            call_command("load_uspvdb", str(path), "--if-empty", stdout=StringIO())
+
+        self.assertEqual(SolarFacility.objects.count(), 2)
+
+    def test_if_empty_skips_without_downloading_when_data_exists(self) -> None:
+        SolarFacility.objects.create(
+            case_id=1,
+            name="Existing Farm",
+            state="CA",
+            capacity_mw=1.0,
+            geom=MultiPolygon(Polygon(((0, 0), (0, 1), (1, 1), (0, 0)))),
+            centroid=Point(0.3, 0.6),
+        )
+        out = StringIO()
+        with patch("facilities.management.commands.load_uspvdb.urllib.request.urlopen") as urlopen:
+            call_command("load_uspvdb", "--if-empty", stdout=out)
+
+        urlopen.assert_not_called()
+        self.assertEqual(SolarFacility.objects.count(), 1)
+        self.assertIn("skipping", out.getvalue())
+
     def test_zip_without_geojson_raises_command_error(self) -> None:
         raw = self._zip_bytes({"CHANGELOG.txt": b"changes"})
         with tempfile.TemporaryDirectory() as tmp_dir:

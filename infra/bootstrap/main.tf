@@ -122,6 +122,20 @@ resource "aws_s3_bucket_policy" "state" {
   depends_on = [aws_s3_bucket_public_access_block.state]
 }
 
+# Lets GitHub Actions workflows exchange their OIDC token for AWS credentials, so deploys need no
+# stored keys. One per account (AWS allows a single provider per issuer URL), which is why it lives
+# here and not in the per-environment stack; each environment's deploy role (infra/main.tf) trusts
+# it separately. AWS validates GitHub's certificate chain itself, so no thumbprint is needed.
+resource "aws_iam_openid_connect_provider" "github" {
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+}
+
+output "github_oidc_provider_arn" {
+  description = "GitHub Actions OIDC provider that each environment's deploy role trusts."
+  value       = aws_iam_openid_connect_provider.github.arn
+}
+
 output "bucket" {
   description = "State bucket name; goes in infra/backend.hcl."
   value       = aws_s3_bucket.state.bucket

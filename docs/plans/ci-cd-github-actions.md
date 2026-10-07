@@ -2,17 +2,17 @@
 
 - GitHub Issue: #53
 - Date: 2026-10-06
-- Status: Draft
+- Status: In Progress
 
 ## Steps
 
 | Status | # | Step |
 |--------|---|------|
-| ⬜ Pending | 1 | CI workflow: check on PRs, build and push the image on main |
-| ⬜ Pending | 2 | Deploy script and SSM document |
-| ⬜ Pending | 3 | OIDC provider, per-env deploy roles, GitHub environments |
-| ⬜ Pending | 4 | Deploy workflow with smoke test and rollback |
-| ⬜ Pending | 5 | First prod deploy, rollback drill and docs |
+| ✅ Done | 1 | CI workflow: check on PRs, build and push the image on main |
+| ✅ Done | 2 | Deploy script and SSM document |
+| ✅ Done | 3 | OIDC provider, per-env deploy roles, GitHub environments |
+| ✅ Done | 4 | Deploy workflow with smoke test and rollback |
+| 🔄 In Progress | 5 | First prod deploy, rollback drill and docs |
 
 ## Context
 
@@ -122,10 +122,33 @@ provider in the personal AWS account; the repo is public; `task check` is the lo
    SSM nodes, refreshing data); link from `README.md`; update `AGENTS.md` layout/commands and
    `docs/requirements.md`; mark step 6 of `aws-single-instance-hosting.md` and its `Status` complete.
 
+## As shipped (steps 1-4, and the docs part of step 5)
+
+Built as planned, with these notes:
+
+- **SSM tag scoping works:** registered nodes carry the activation's tags (`Environment`, `Name`,
+  ...), checked on the live dev and prod nodes, so the deploy role's `SendCommand` on
+  `managed-instance/*` is conditioned on `ssm:resourceTag/Environment`. No document-only fallback
+  was needed.
+- **`scripts/deploy.sh` was tested end to end locally** against a throwaway registry and a scratch
+  copy with no `.env`: first deploy (secrets generated, image pulled, stack healthy, migrated,
+  6,611 facilities loaded), an idempotent re-run (no changes, data load skipped), and a deliberately
+  broken image (the old image came back, the site kept serving, exit code 1). Every step goes
+  through a `step` wrapper because `set -e` is disabled inside functions run under `||`/`if`.
+- `load_uspvdb --if-empty` (with tests); `task gh:env` also sets `AWS_REGION`, `DEPLOY_DOCUMENT`
+  and `SITE_URL`; Terraform outputs `aws_region`, `deploy_document`, `deploy_role_arn`.
+- `terraform plan` for dev shows only additions (the deploy document, role and policy) and **fails
+  until `task tf:bootstrap` has created the OIDC provider**, so that runs first.
+- Verified: `task check`, `actionlint` on both workflows, `shellcheck` on the script,
+  `docker compose config` with and without `WEB_IMAGE`.
+- **Not yet done (step 5, needs the user's AWS/GitHub access):** the live bootstrap and applies, the
+  GitHub Environments and branch protection, making the GHCR package public, the first dev and prod
+  deploys through the workflow, and the broken-sha / rollback / rebuild drills. `docs/deploy.md`
+  lists the exact order.
+
 ## Risks / open items
 
 - GHCR package visibility (see step 1); fall back to a one-time UI change.
-- SSM tag-scoped `SendCommand` (see step 3); fall back to document-only scoping.
 - Destructive Django migrations are not reversed by the rollback (only the image is);
   fine for a read-only dataset app, noted in `docs/deploy.md`.
 - Out of scope: staging, uptime monitoring, Dependabot, scheduled data refresh.

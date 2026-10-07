@@ -28,6 +28,9 @@ services:
       retries: 5
 
   web:
+    # Production hosts pull the image CI built (WEB_IMAGE=ghcr.io/...:<sha>, set by scripts/deploy.sh).
+    # `build` is the fallback for trying this stack locally: `up --build` builds and tags it.
+    image: ${WEB_IMAGE:-solar-map-web:local}
     build: ./backend
     restart: unless-stopped
     # Image default CMD is gunicorn; spelled out here to enable the access log. The worker

@@ -32,3 +32,9 @@ variable "repo_url" {
   type        = string
   default     = "https://github.com/tomharrisonjr/solar-map.git"
 }
+
+variable "github_repo" {
+  description = "GitHub repository (owner/name) whose workflows may assume the deploy roles."
+  type        = string
+  default     = "tomharrisonjr/solar-map"
+}

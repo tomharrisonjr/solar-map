@@ -118,6 +118,27 @@ tasks:
         vars: {ENV: "{{.ENV}}"}
       - TF_WORKSPACE={{.ENV}} terraform -chdir=infra output {{.CLI_ARGS}}
 
+  # Wires the deploy workflow (.github/workflows/deploy.yml) to an environment: creates the GitHub
+  # Environment (its name is what the AWS role's OIDC trust matches) and sets its variables from
+  # Terraform's outputs. All four are non-secret identifiers; there are no GitHub secrets. Re-run
+  # after the environment is first applied or its outputs change. Needs `gh` logged in with repo
+  # admin rights and AWS_PROFILE pointing at the account that holds the Terraform state.
+  gh:env:
+    desc: "Create the GitHub Environment for deploys and set its variables from Terraform outputs: task gh:env ENV=dev"
+    requires:
+      vars:
+        - name: ENV
+          enum: [dev, staging, prod]
+    cmds:
+      - task: tf:workspace
+        vars: {ENV: "{{.ENV}}"}
+      - gh api --method PUT "repos/{owner}/{repo}/environments/{{.ENV}}" --silent
+      - gh variable set AWS_DEPLOY_ROLE_ARN --env {{.ENV}} --body "$(TF_WORKSPACE={{.ENV}} terraform -chdir=infra output -raw deploy_role_arn)"
+      - gh variable set AWS_REGION --env {{.ENV}} --body "$(TF_WORKSPACE={{.ENV}} terraform -chdir=infra output -raw aws_region)"
+      - gh variable set DEPLOY_DOCUMENT --env {{.ENV}} --body "$(TF_WORKSPACE={{.ENV}} terraform -chdir=infra output -raw deploy_document)"
+      - gh variable set SITE_URL --env {{.ENV}} --body "$(TF_WORKSPACE={{.ENV}} terraform -chdir=infra output -raw site_url)"
+      - gh variable list --env {{.ENV}}
+
   # A rebuilt instance needs a fresh SSM activation (the old code expires after 24h and user_data
   # only runs on first boot), so both resources are replaced together. The old box's SSM
   # registration lingers as an offline node; `task ssm` ignores it, and it can be removed with

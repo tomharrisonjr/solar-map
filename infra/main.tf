@@ -139,3 +139,117 @@ resource "aws_ssm_activation" "this" {
   }
   depends_on = [aws_iam_role_policy_attachment.ssm]
 }
+
+# The one thing the CI deploy role may run on the box (see the deploy workflow): check out a commit
+# and run its scripts/deploy.sh. A fixed command with validated parameters, rather than letting CI
+# send arbitrary shell. The parameters are checked against allowedPattern before SSM substitutes
+# them, so nothing but 40 hex digits and a hostname ever reaches the shell. Fetching first means
+# the deploy script that runs is the one from the commit being deployed. Runs as root, drops to
+# `ubuntu` (a login shell, so the docker group applies).
+resource "aws_ssm_document" "deploy" {
+  name            = "${local.name}-deploy"
+  document_type   = "Command"
+  document_format = "JSON"
+
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Deploy a commit of solar-map to ${local.name}"
+    parameters = {
+      sha = {
+        type           = "String"
+        description    = "Full git commit sha to deploy (its image must already be in GHCR)."
+        allowedPattern = "^[0-9a-f]{40}$"
+      }
+      siteAddress = {
+        type           = "String"
+        description    = "Public hostname (SITE_ADDRESS); only used when creating backend/.env."
+        default        = local.fqdn
+        allowedPattern = "^[a-z0-9.-]+$"
+      }
+    }
+    mainSteps = [{
+      action = "aws:runShellScript"
+      name   = "deploy"
+      inputs = {
+        timeoutSeconds = "1800"
+        runCommand = [
+          "set -eu",
+          "su - ubuntu -c 'cd /home/ubuntu/solar-map && git fetch --quiet origin && git checkout --quiet --detach {{sha}} && scripts/deploy.sh {{sha}} {{siteAddress}}'",
+        ]
+      }
+    }]
+  })
+}
+
+# --- CI deploys --------------------------------------------------------------------------------
+# GitHub Actions deploys by assuming this role with its OIDC token (no stored credentials) and
+# sending the deploy document above to this environment's instance. The OIDC provider itself is
+# account-wide and created once by infra/bootstrap: apply that first (`task tf:bootstrap`).
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+# Only workflow runs that target this environment's GitHub Environment (deploy.yml sets
+# `environment: <env>`) can assume the role, so a dev job can never act on prod.
+data "aws_iam_policy_document" "github_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repo}:environment:${local.env}"]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_deploy" {
+  name               = "${local.name}-deploy"
+  assume_role_policy = data.aws_iam_policy_document.github_assume.json
+}
+
+data "aws_iam_policy_document" "github_deploy" {
+  # Run this environment's deploy document, and only on this environment's node: registered nodes
+  # carry the activation's tags, which is what scopes the second statement.
+  statement {
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:document/${aws_ssm_document.deploy.name}"]
+  }
+  statement {
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:managed-instance/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ssm:resourceTag/Environment"
+      values   = [local.env]
+    }
+  }
+  # Read-only: find the node, follow the command it sent and read its output. These actions don't
+  # support resource-level scoping.
+  statement {
+    actions = [
+      "ssm:GetCommandInvocation",
+      "ssm:ListCommandInvocations",
+      "ssm:ListCommands",
+      "ssm:DescribeInstanceInformation",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "github_deploy" {
+  name   = "deploy"
+  role   = aws_iam_role.github_deploy.id
+  policy = data.aws_iam_policy_document.github_deploy.json
+}

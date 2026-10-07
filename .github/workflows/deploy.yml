@@ -1,0 +1,158 @@
+# Manual deploy of one commit to one environment. Merging to main only builds and tests (ci.yml);
+# nothing deploys until someone runs this from the Actions tab (or `gh workflow run deploy.yml`).
+#
+# Auth is GitHub OIDC -> the environment's IAM role (infra/main.tf), which may only run that
+# environment's SSM deploy document on its own instance. No AWS keys or secrets live in GitHub;
+# the role ARN etc. are plain environment variables set by `task gh:env`. Rollback is just running
+# this again with an older sha. See docs/deploy.md.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy to
+        type: choice
+        options: [dev, prod]
+        default: dev
+        required: true
+      sha:
+        description: Full commit sha to deploy (blank = head of main). Its CI run must have passed.
+        type: string
+        required: false
+
+# One deploy per environment at a time; a second request waits rather than interleaving.
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read # to look up the CI run for the sha
+  id-token: write # to request the OIDC token AWS trusts
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/solar-map-web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Names the GitHub Environment, which is what the role's OIDC trust (sub claim) matches, and
+    # holds this environment's variables.
+    environment: ${{ inputs.environment }}
+    steps:
+      # Inputs reach the shell only through env vars (never interpolated into scripts).
+      - name: Resolve and validate the commit
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          sha="$INPUT_SHA"
+          if [ -z "$sha" ]; then
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          fi
+          case "$sha" in
+            *[!0-9a-f]* | "") echo "::error::sha must be 40 lowercase hex characters"; exit 1 ;;
+          esac
+          if [ "${#sha}" -ne 40 ]; then
+            echo "::error::sha must be the full 40-character commit sha"; exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # Only a commit whose CI run succeeded on main (so an image was built from tested code) can
+      # be deployed. Rollback to an older sha works the same way: it passed CI when it was built.
+      - name: Require a successful CI run for the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.ref.outputs.sha }}
+        run: |
+          ok=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" \
+                 --event push --status success --json databaseId --jq length)
+          if [ "$ok" -lt 1 ]; then
+            echo "::error::no successful push CI run found for $SHA (was it merged to main?)"
+            exit 1
+          fi
+
+      # Anonymous on purpose: this is what the host does, so it also proves the package is public.
+      - name: Require the image to exist
+        env:
+          SHA: ${{ steps.ref.outputs.sha }}
+        run: docker buildx imagetools inspect "$IMAGE:$SHA" >/dev/null
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy through SSM
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          DOCUMENT: ${{ vars.DEPLOY_DOCUMENT }}
+          SHA: ${{ steps.ref.outputs.sha }}
+        run: |
+          # Each environment's node registers under its own role; a destroyed box's stale
+          # registration can still read Online for a while, so take the most recent ping.
+          node=$(aws ssm describe-instance-information \
+            --filters "Key=IamRole,Values=solar-map-$ENVIRONMENT-ssm" \
+            --query 'max_by(InstanceInformationList, &LastPingDateTime).InstanceId' --output text)
+          if [ -z "$node" ] || [ "$node" = None ]; then
+            echo "::error::no SSM node registered for $ENVIRONMENT"; exit 1
+          fi
+          echo "node: $node"
+
+          cid=$(aws ssm send-command --instance-ids "$node" --document-name "$DOCUMENT" \
+            --parameters "sha=$SHA" --comment "deploy $SHA (run $GITHUB_RUN_ID)" \
+            --query Command.CommandId --output text)
+          echo "command: $cid"
+
+          # Poll to completion (the document's own timeout is 30 minutes).
+          for _ in $(seq 1 360); do
+            status=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$node" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in
+              Pending | InProgress | Delayed) sleep 5 ;;
+              *) break ;;
+            esac
+          done
+
+          out=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$node" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text)
+          echo "$out"
+          echo "status: $status"
+          if [ "$status" != Success ]; then
+            echo "::error::deploy finished with status $status (the host rolls back on failure)"
+            exit 1
+          fi
+          # The script's last line names the image the stack is running.
+          if ! echo "$out" | grep -q "deployed .*:$SHA"; then
+            echo "::error::deploy reported success but not for $SHA"; exit 1
+          fi
+
+      - name: Smoke test
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          curl() { command curl --fail --silent --show-error --max-time 20 \
+            --retry 6 --retry-delay 5 --retry-all-errors "$@"; }
+          curl --output /dev/null "$SITE_URL/"
+          size=$(curl --output /dev/null --write-out '%{size_download}' "$SITE_URL/tiles/4/3/5.mvt")
+          [ "$size" -gt 0 ] || { echo "::error::empty vector tile"; exit 1; }
+          n=$(curl "$SITE_URL/api/facilities/nearest/?lat=35&lon=-118" | jq '.features | length')
+          [ "$n" -gt 0 ] || { echo "::error::nearest returned no facilities"; exit 1; }
+          echo "smoke test passed against $SITE_URL"
+
+      - name: Summary
+        if: success()
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          SHA: ${{ steps.ref.outputs.sha }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          {
+            echo "### Deployed to $ENVIRONMENT"
+            echo
+            echo "- Commit: \`$SHA\`"
+            echo "- Image: \`$IMAGE:$SHA\`"
+            echo "- Site: $SITE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

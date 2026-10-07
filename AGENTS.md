@@ -14,6 +14,10 @@ frontend is a later phase.
 ```
 README.md              getting started for humans: prerequisites, `task setup`, troubleshooting
 Taskfile.yml           dev workflow: setup/data:load/check/migrate, worktree new/rm/list (`task --list`)
+.github/workflows/     ci.yml (`task check` on PRs; image per commit on main) and deploy.yml (manual deploy
+                       to dev/prod via GitHub OIDC + SSM); see docs/deploy.md
+scripts/deploy.sh      run on the host by the SSM deploy document: pull image, up, migrate, load data if
+                       empty, roll back on failure (idempotent; also does the first deploy)
 docker-compose.prod.yml  single-host production stack: Caddy (TLS) + gunicorn web + PostGIS; configured
                        by `backend/.env` via `--env-file` (see the header comment)
 Caddyfile              reverse proxy for the prod stack; serves `SITE_ADDRESS` (automatic TLS)
@@ -37,6 +41,7 @@ backend/
     management/commands/load_uspvdb.py   # ingestion command (GeoJSON file/URL → upsert by case_id)
 docs/
   requirements.md       design doc — read this for context before major changes
+  deploy.md             how deploys work (CI, the deploy workflow, rollback, first-time setup, rebuilds)
   plans/                plan docs for non-trivial features (see Workflow below)
 ```
 
@@ -59,6 +64,7 @@ task venv        # backend/.venv from requirements-dev.txt, for editor import re
 task tf:plan ENV=prod   # Terraform plan for an environment (dev|staging|prod); `tf:apply` creates billable AWS resources
 task tf:output ENV=prod # show that environment's outputs (IP, site address); `-- <name>` for one value
 task tf:rebuild ENV=dev # destroy + recreate an environment's instance (wipes the box; billable)
+task gh:env ENV=dev     # create the GitHub Environment for deploys + set its variables from Terraform outputs
 task ssm ENV=dev        # shell on the instance via SSM Session Manager (there is no SSH); `-- <cmd>` runs one command
 task tf:bootstrap  # once per AWS account: create the S3 bucket that holds Terraform state
 task tf:check    # terraform fmt -check + validate (part of `task check`; skipped if terraform isn't installed)

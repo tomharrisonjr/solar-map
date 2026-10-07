@@ -240,23 +240,19 @@ migration `task tf:plan ENV=dev` shows no diff, the object exists in the bucket
 
 ## Step 6 — First deploy, data load and docs
 
-Builds on `docs/plans/ssm-access-and-env-hostnames.md` (#51): shell access is SSM (`task ssm
-ENV=<env>`, no SSH), and hostnames are `solar-map.tomharrisonjr.com` for prod with
-`dev.solar-map.*` / `staging.solar-map.*` beneath it. The dev deploy was done by hand once to
-prove the stack; this step repeats it for prod and writes it down.
+Done through the pipeline instead of by hand: `docs/plans/ci-cd-github-actions.md` (#53). Shell
+access is SSM (`task ssm ENV=<env>`, no SSH, #51) and hostnames are `solar-map.tomharrisonjr.com`
+for prod with `dev.solar-map.*` / `staging.solar-map.*` beneath it. The dev stack was deployed by
+hand once to prove it; that sequence is now `scripts/deploy.sh`, run by the manual Deploy workflow:
+first deploy creates `backend/.env`, starts the stack, migrates and loads the dataset.
 
-- `task tf:apply ENV=prod`, then `task ssm ENV=prod`: the repo is already cloned by `user_data`.
-  Create `backend/.env` on the host (`SITE_ADDRESS` from `task tf:output ENV=prod -- site_address`;
-  `SECRET_KEY` and `DATABASE_PASSWORD` generated there with `openssl rand`, never via Terraform),
-  then `docker compose --env-file backend/.env -f docker-compose.prod.yml up -d --build`,
-  `migrate`, `load_uspvdb` (the default source downloads the official zip).
+- Prod's first deploy is step 5 of the CI/CD plan (after its Terraform and GitHub setup).
 - Register `solar-map.tomharrisonjr.com` in the Stadia dashboard; its subdomains are covered.
-- Verify over HTTPS: map renders, tiles load, `/api/facilities/nearest/?lat=…&lon=…` works,
-  `/admin/` reachable, HTTP redirects to HTTPS.
-- Write `docs/deploy.md` (Terraform usage, deploy/update routine over `task ssm`, refreshing data,
-  `tf:rebuild`, restoring from snapshot); link it from `README.md`; update `docs/requirements.md`
-  and `AGENTS.md` layout.
-- Set this plan's `Status` to `Complete`.
+- Verify over HTTPS: map renders, tiles load, `/api/facilities/nearest/?lat=...&lon=...` works,
+  `/admin/` reachable, HTTP redirects to HTTPS (the workflow's smoke test covers the first three).
+- `docs/deploy.md` is written (pipeline, deploy and rollback, first-time setup, rebuilds,
+  dataset refresh); linked from `README.md`.
+- Set this plan's `Status` to `Complete` once prod is live.
 
 ## Verification
 
@@ -265,7 +261,6 @@ the DB volume on the instance, `migrate` + `load_uspvdb`, confirm 6,611 faciliti
 
 ## Deferred to a later pass
 
-- CI-driven deploys (GitHub Actions over SSH or via ECR).
 - Uptime monitoring/alerting (e.g. Route 53 health check or a free external pinger).
 - Moving to RDS PostGIS + ECS Express Mode if traffic or uptime needs grow.
 - A CDN in front of `/tiles/` if tile load warrants it.

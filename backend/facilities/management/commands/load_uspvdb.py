@@ -54,8 +54,18 @@ class Command(BaseCommand):
             help="Path or URL to uspvdbGeoJSON.zip or a USPVDB GeoJSON file "
             "(default: the official USGS release)",
         )
+        parser.add_argument(
+            "--if-empty",
+            action="store_true",
+            help="Do nothing (and download nothing) if any facilities are already loaded. "
+            "Lets a deploy run this on every release so only a fresh database gets populated.",
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
+        if options["if_empty"] and SolarFacility.objects.exists():
+            self.stdout.write("Facilities already loaded; skipping (--if-empty).")
+            return
+
         source: str = options["source"]
         data, loaded_name = self._load(source)
         features: list[dict[str, Any]] = data["features"]

@@ -50,6 +50,12 @@ one command instead). `task tf:rebuild ENV=dev` destroys and recreates an enviro
 Make sure `AWS_PROFILE` is the account that owns the infrastructure: another account's profile gets
 a 403 on the state bucket.
 
+Deploys go through GitHub Actions, not by hand: CI runs `task check` on every PR and builds an image
+per commit on `main`, and a manual **Deploy** workflow (environment + commit) rolls it out over SSM
+with a smoke test and automatic rollback, authenticated by GitHub OIDC with no stored AWS keys.
+First-time setup, deploy/rollback commands, rebuilds and troubleshooting are in
+[`docs/deploy.md`](docs/deploy.md).
+
 Terraform state lives in a private S3 bucket (`solar-map-tfstate-<account-id>`, locked with S3 lock
 files, so no DynamoDB), which is how several computers share it: all you need is the same AWS
 credentials. A brand-new AWS account needs `task tf:bootstrap` once to create the bucket (then
